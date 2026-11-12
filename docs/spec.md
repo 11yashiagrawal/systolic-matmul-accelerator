@@ -84,3 +84,150 @@ acc <= acc + {{(ACC_W-2*DATA_W){prod[2*DATA_W-1]}}, prod};
 - Reset is **synchronous and active-low**: `rst_n = 0` at a rising edge puts every register in this design into its reset value (zero, or `IDLE` for the controller).
 - Ports that carry one value are declared `signed`. Ports that carry several values are flattened, unsigned buses with lane `l` at `[l*W +: W]`.
 - Combinational outputs are named in this spec. Every other output comes straight from a register.
+
+## 6. Modules and ports
+
+`W` columns give the width in bits. `s` marks a signed port. "Reg" means the output comes straight from a register; "comb" means it is combinational.
+
+```mermaid
+flowchart LR
+  host([Host or testbench])
+  subgraph top [systolic_top]
+    abuf["input_skew_buffer (A)<br/>COLUMN_LANES = 0"]
+    bbuf["input_skew_buffer (B)<br/>COLUMN_LANES = 1"]
+    arr["systolic_array<br/>N x N pe"]
+    obuf[output_buffer]
+    ctrl[sa_controller]
+  end
+  host -- "a_we, a_addr, a_wdata" --> abuf
+  host -- "b_we, b_addr, b_wdata" --> bbuf
+  host -- start --> ctrl
+  ctrl -- "busy, done, cycle_count" --> host
+  abuf -- a_left --> arr
+  bbuf -- b_top --> arr
+  ctrl -- "en, step" --> abuf
+  ctrl -- "en, step" --> bbuf
+  ctrl -- "clear, en" --> arr
+  arr -- acc_flat --> obuf
+  ctrl -- capture --> obuf
+  host -- c_addr --> obuf
+  obuf -- c_rdata --> host
+```
+
+### 6.1 `mac` — `rtl/pe/mac.v` (#6)
+
+Parameters: `DATA_W`, `ACC_W`.
+
+| Port | Dir | W | Description |
+|---|---|---|---|
+| `clk`, `rst_n` | in | 1 | Clock; synchronous active-low reset |
+| `clear` | in | 1 | Zero the accumulator |
+| `en` | in | 1 | Accumulate this cycle |
+| `a`, `b` | in | `DATA_W` s | Operands |
+| `acc` | out (reg) | `ACC_W` s | Running sum |
+
+At each rising edge, in priority order: `!rst_n` or `clear` sets `acc <= 0`; otherwise `en` sets `acc <= acc + a*b` (sign-extended product, section 4); otherwise `acc` holds.
+
+### 6.2 `pe` — `rtl/pe/pe.v` (#6)
+
+Parameters: `DATA_W`, `ACC_W`. Contains one `mac` and two forwarding registers.
+
+| Port | Dir | W | Description |
+|---|---|---|---|
+| `clk`, `rst_n` | in | 1 | Clock; synchronous active-low reset |
+| `clear` | in | 1 | Zero the accumulator and both forwarding registers |
+| `en` | in | 1 | Accumulate and forward this cycle |
+| `a_in` | in | `DATA_W` s | Operand from the left neighbour (or the A edge) |
+| `b_in` | in | `DATA_W` s | Operand from the neighbour above (or the B edge) |
+| `a_out` | out (reg) | `DATA_W` s | `a_in` delayed one enabled cycle, to the right neighbour |
+| `b_out` | out (reg) | `DATA_W` s | `b_in` delayed one enabled cycle, to the neighbour below |
+| `acc` | out (reg) | `ACC_W` s | The `mac` accumulator, `C[i][j]` |
+
+At each rising edge: `!rst_n` or `clear` zeroes `a_out`, `b_out` and `acc`; otherwise, when `en` is high, `a_out <= a_in`, `b_out <= b_in` and `acc <= acc + a_in*b_in`; otherwise all three hold. So an operand that enters a PE in one enabled cycle leaves it in the next.
+
+### 6.3 `systolic_array` — `rtl/array/systolic_array.v` (#3)
+
+Parameters: `N`, `DATA_W`, `ACC_W`. Instantiates N×N `pe` with `generate` loops.
+
+| Port | Dir | W | Description |
+|---|---|---|---|
+| `clk`, `rst_n` | in | 1 | Clock; synchronous active-low reset |
+| `clear`, `en` | in | 1 | Broadcast to every PE |
+| `a_left` | in | `N*DATA_W` | Lane i drives `a_in` of PE (i, 0) |
+| `b_top` | in | `N*DATA_W` | Lane j drives `b_in` of PE (0, j) |
+| `acc_flat` | out (reg) | `N*N*ACC_W` | `acc` of PE (i, j) at `[(i*N+j)*ACC_W +: ACC_W]` |
+
+Inside: `a_in` of PE (i, j) is `a_out` of PE (i, j−1), and `b_in` of PE (i, j) is `b_out` of PE (i−1, j). The `a_out` of the last column and the `b_out` of the last row are unused; waive that lint warning with a comment.
+
+### 6.4 `input_skew_buffer` — `rtl/buffers/input_skew_buffer.v` (#10)
+
+Parameters: `N`, `DATA_W`, `COLUMN_LANES`. It stores one N×N matrix and feeds it into one edge of the array with the skew. The top level instantiates it twice: `COLUMN_LANES = 0` for A (lane l is row l) and `COLUMN_LANES = 1` for B (lane l is column l).
+
+| Port | Dir | W | Description |
+|---|---|---|---|
+| `clk`, `rst_n` | in | 1 | Clock; synchronous active-low reset (storage resets to 0) |
+| `we` | in | 1 | Write `wdata` at `waddr` this cycle |
+| `waddr` | in | `ADDR_W` | Row-major address: element (r, c) is at `r*N + c` |
+| `wdata` | in | `DATA_W` s | Element value |
+| `en` | in | 1 | Feeding is active (the controller's COMPUTE state) |
+| `step` | in | `STEP_W` | Compute step `t`, from 0 to `T − 1` |
+| `lanes` | out (comb) | `N*DATA_W` | Lane l at `[l*DATA_W +: DATA_W]` |
+
+Storage `M` is written at the rising edge when `we` is high: `M[waddr / N][waddr % N] <= wdata`. Each lane `l` is combinational in `step` and `M`:
+
+| Condition | `COLUMN_LANES = 0` (A) | `COLUMN_LANES = 1` (B) |
+|---|---|---|
+| `en` high and `0 <= t − l < K` | `M[l][t − l]` | `M[t − l][l]` |
+| otherwise | 0 | 0 |
+
+Compare `t >= l` before subtracting: `t − l` on unsigned values wraps around. An implementation built from shift registers is also fine, as long as the lanes match this table in every cycle.
+
+### 6.5 `output_buffer` — `rtl/buffers/output_buffer.v` (#10)
+
+Parameters: `N`, `ACC_W`.
+
+| Port | Dir | W | Description |
+|---|---|---|---|
+| `clk`, `rst_n` | in | 1 | Clock; synchronous active-low reset (results reset to 0) |
+| `capture` | in | 1 | Copy every accumulator into the result registers this cycle |
+| `acc_flat` | in | `N*N*ACC_W` | From `systolic_array` |
+| `c_addr` | in | `ADDR_W` | Row-major address of the result to read |
+| `c_rdata` | out (comb) | `ACC_W` s | Result register at `c_addr` |
+
+At the rising edge with `capture` high, all N×N result registers load `acc_flat` at once. They hold until the next capture, so the previous C stays readable while the next multiplication runs.
+
+### 6.6 `sa_controller` — `rtl/control/sa_controller.v` (#7)
+
+Parameters: `N`, `CYC_W`. Behaviour and timing are in section 7.
+
+| Port | Dir | W | Description |
+|---|---|---|---|
+| `clk`, `rst_n` | in | 1 | Clock; synchronous active-low reset (to `IDLE`) |
+| `start` | in | 1 | Begin a multiplication; sampled in `IDLE` and `DONE` only |
+| `busy` | out | 1 | High in `CLEAR`, `COMPUTE` and `CAPTURE` |
+| `done` | out | 1 | High in `DONE`: C is readable |
+| `clear` | out | 1 | High in `CLEAR`, to the array |
+| `en` | out | 1 | High in `COMPUTE`, to the array and both skew buffers |
+| `step` | out (reg) | `STEP_W` | Compute step, 0 to `T − 1` in `COMPUTE`; 0 elsewhere |
+| `capture` | out | 1 | High in `CAPTURE`, to the output buffer |
+| `cycle_count` | out (reg) | `CYC_W` | Cycles spent busy in the current or last run |
+
+`busy`, `done`, `clear`, `en` and `capture` are decoded from the state register only (Moore outputs), so they change only at clock edges.
+
+### 6.7 `systolic_top` — `rtl/top/systolic_top.v` (#4)
+
+Parameters: `N`, `DATA_W`, `ACC_W`, `CYC_W`. This is the matrix data interface the host sees.
+
+| Port | Dir | W | Description |
+|---|---|---|---|
+| `clk`, `rst_n` | in | 1 | Clock; synchronous active-low reset |
+| `a_we`, `a_addr`, `a_wdata` | in | 1, `ADDR_W`, `DATA_W` s | Write one element of A (row-major) |
+| `b_we`, `b_addr`, `b_wdata` | in | 1, `ADDR_W`, `DATA_W` s | Write one element of B (row-major) |
+| `start` | in | 1 | Begin C = A × B |
+| `busy` | out | 1 | A multiplication is running |
+| `done` | out | 1 | C is valid on the read port |
+| `c_addr` | in | `ADDR_W` | Row-major address of the element of C to read |
+| `c_rdata` | out (comb) | `ACC_W` s | `C[c_addr / N][c_addr % N]` |
+| `cycle_count` | out | `CYC_W` | Busy cycles of the last run |
+
+Wiring: each buffer's `we` is the host's write enable ANDed with `!busy`, so writes during a run are ignored and cannot corrupt the operands in flight. The controller's `en` and `step` go to both buffers, `clear` and `en` go to the array, and `capture` goes to the output buffer.
