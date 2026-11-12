@@ -1,4 +1,41 @@
 % Literature review (issue #15). Add every cited paper to refs.bib in the same PR.
 
 \section{Literature Review}
-To be written in \#15.
+
+\subsection{Systolic Arrays}
+Kung and Leiserson introduced systolic arrays as grids of simple, identical cells that pass data only to their nearest neighbours, with every cell working in step with one clock~\cite{kung1979systolic}. Kung later argued that the main benefit is reuse: an operand fetched from memory once is used by many cells as it moves through the array, so the array can do much more computation per memory access~\cite{kung1982systolic}. Matrix multiplication fits this model well, because each element of $A$ and $B$ is used $N$ times in an $N \times N$ product. Short, local wires and a regular layout also make the design easy to scale and to lay out in silicon.
+
+The reuse argument matters more today than in 1982. At 45\,nm, an off-chip DRAM access costs more than three orders of magnitude more energy than an 8-bit integer multiply~\cite{horowitz2014energy}. An accelerator saves energy by keeping data on chip and close to the arithmetic, and a systolic array does this by design.
+
+\subsection{Dataflows}
+Chen \emph{et al.} classify accelerator dataflows by which value stays in place inside each processing element (PE)~\cite{chen2016eyeriss, sze2017efficient}. In a \emph{weight-stationary} (WS) dataflow, each PE holds one weight while inputs flow past and partial sums move out. In an \emph{output-stationary} (OS) dataflow, each PE holds one output and accumulates it in place while both operands flow through. \emph{Row-stationary} (RS) and \emph{no-local-reuse} dataflows trade between these. SCALE-Sim, a cycle-level simulator for systolic accelerators, adds \emph{input-stationary} (IS) and shows that the best dataflow and array shape depend on the layer dimensions~\cite{samajdar2020scalesim}. No dataflow is best for every workload.
+
+OS suits a small matrix-multiplication array for two reasons. First, partial sums never leave the PE, so the array needs no adder chain between PEs and no partial-sum buffer. Second, the full result $C$ is already in place when computation ends, so it can be read out directly. The cost is pipeline fill and drain. An $N \times N$ OS array computing an inner dimension of $K$ needs $K + 2N - 2$ cycles, of which only $K$ keep any single PE busy. This is why utilization is low when $K$ is small, 40\,\% for $N = K = 4$, and approaches full use as $K$ grows.
+
+\subsection{Accelerators Built on These Dataflows}
+Table~\ref{tab:litcompare} compares several published designs with this work. Google's first Tensor Processing Unit (TPU) uses a $256 \times 256$ WS systolic array of 8-bit multiply-accumulate units, with 32-bit accumulators, for datacenter neural-network inference~\cite{jouppi2017tpu}. ShiDianNao uses an OS $8 \times 8$ PE array placed next to an image sensor, and keeps each output neuron in its PE while inputs shift between neighbours~\cite{du2015shidiannao}. Eyeriss introduced the RS dataflow on a 168-PE chip and reduces data movement for convolutions~\cite{chen2016eyeriss, chen2017eyerissjssc}. Gemmini is an open-source generator of systolic-array accelerators whose array can run either OS or WS, chosen at run time, so the two can be compared on the same hardware~\cite{genc2021gemmini}.
+
+\begin{table}[t]
+\centering
+\caption{Systolic and spatial accelerators compared with this work}
+\label{tab:litcompare}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Design & Dataflow & PEs & Operands \\
+\midrule
+TPU~\cite{jouppi2017tpu} & WS & $256 \times 256$ & 8-bit int \\
+ShiDianNao~\cite{du2015shidiannao} & OS & $8 \times 8$ & 16-bit fixed \\
+Eyeriss~\cite{chen2017eyerissjssc} & RS & $12 \times 14$ & 16-bit fixed \\
+Gemmini~\cite{genc2021gemmini} & OS or WS & configurable & configurable \\
+This work & OS & $4 \times 4$ (any $N$) & 8-bit int \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Fixed-Point Arithmetic}
+Integer arithmetic is much cheaper than floating point in both energy and area~\cite{horowitz2014energy}. Jacob \emph{et al.} show that neural networks can run inference with 8-bit integer weights and activations and 32-bit integer accumulators, with little loss of accuracy~\cite{jacob2018quantization}. The TPU uses the same 8-bit operand and 32-bit accumulator widths~\cite{jouppi2017tpu}. This work follows that choice. With 8-bit signed operands and $K = 4$, the largest possible sum needs 18 bits, so a 32-bit accumulator cannot overflow.
+
+\subsection{Position of This Work}
+The designs above are built for throughput on large workloads. This prototype is a small, fully parameterized OS array whose timing contract (input skew, a compute latency of $K + 2N - 2$ cycles and a start/busy/done handshake) is stated precisely and checked against a Python golden model that also simulates the array cycle by cycle. The literature suggests three directions for Phase~2: tiling to support $K \neq N$ and larger matrices, which improves utilization; comparing OS with WS on the same array, as Gemmini allows; and buffering inputs and outputs so that loading and readout overlap with computation.
