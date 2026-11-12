@@ -321,3 +321,96 @@ In general `busy` is high for `T + 2 = K + 2N` cycles (12 for N = 4), and `cycle
 - Writes to A and B are accepted only while `busy` is low; the top level ignores them during a run. A and B keep their contents between runs, so a host can replace just one matrix before the next `start`.
 - C is valid while `done` is high. It stays readable after the next `start`, until that run's `CAPTURE` cycle replaces it.
 - `rst_n` low at a rising edge returns the controller to `IDLE` and zeroes A, B, the accumulators, the results and `cycle_count`. After reset, every address of C reads 0.
+
+## 8. Address map
+
+All three matrices use row-major addresses on their own ports.
+
+| Port | Element | Address | N = 4 example |
+|---|---|---|---|
+| `a_addr` | `A[r][c]` | `r*N + c` | `A[2][1]` is at 9 |
+| `b_addr` | `B[r][c]` | `r*N + c` | `B[0][3]` is at 3 |
+| `c_addr` | `C[r][c]` | `r*N + c` | `C[3][3]` is at 15 |
+
+The A and B ports are independent, so both matrices load together in N² = 16 cycles. C is read one element per cycle, also in 16 cycles.
+
+## 9. Golden test vectors
+
+`model/gen_vectors.py` (#14) writes the vectors and `tb/tb_systolic_top.v` (#11) reads them with `$readmemh`. Both follow this format so they work together without further agreement.
+
+```sh
+python model/gen_vectors.py --n 4 --random 100 --seed 1 --out sim/vectors
+```
+
+`sim/vectors/` is generated and gitignored.
+
+| File | Lines | Each line |
+|---|---|---|
+| `config.hex` | 2 | Line 0 is N; line 1 is the number of cases. 8 hex digits each |
+| `a.hex` | cases × N × N | One element of A: `DATA_W / 4` hex digits (2), two's complement |
+| `b.hex` | cases × N × N | One element of B, same format |
+| `c.hex` | cases × N × N | One expected element of C: `ACC_W / 4` hex digits (8), two's complement |
+| `manifest.txt` | – | For people: N, the seed, and the index and name of every case |
+
+Line `case*N*N + r*N + c` of each file holds element (r, c) of that case. Negative values are written in two's complement at the file's width, so −1 is `ff` in `a.hex` and −65,024 is `ffff0200` in `c.hex`. The testbench checks that N in `config.hex` matches its own parameter.
+
+Directed cases come first, in this order, followed by the random cases:
+
+| Index | Name | A | B | Expected C |
+|---|---|---|---|---|
+| 0 | `identity` | random | identity | C = A |
+| 1 | `zero` | random | all zero | all zero |
+| 2 | `ones` | all 1 | all 1 | every element K |
+| 3 | `max_negative` | all −128 | all −128 | every element K × 16,384 (65,536 for K = 4) |
+| 4 | `max_mixed` | all −128 | all 127 | every element −K × 16,256 (−65,024 for K = 4) |
+| 5 | `known` | 1 to N², row-major | A transposed | worked by hand in the report |
+| 6 and on | `random_<n>` | uniform over −128 to 127 | uniform over −128 to 127 | from the model |
+
+Random values come from `numpy.random.default_rng(seed)`, so a seed always reproduces the same cases.
+
+## 10. Verification plan
+
+Every testbench is self-checking and ends with one summary line, which the Makefile (#17) and CI look for:
+
+```
+PASS tb_<module> <passed>/<total>
+FAIL tb_<module> <failed> of <total> checks failed
+```
+
+On any failure the testbench also calls `$fatal(1, ...)`, so the simulator exits with an error.
+
+| Testbench | Module | It must check | Issue |
+|---|---|---|---|
+| `tb_mac` | `mac` | Signed products including −128 × −128 and −128 × 127; an accumulation chain; `clear` in the middle of a chain; `en` low holds; reset | #6 |
+| `tb_pe` | `pe` | Forwarding takes exactly one enabled cycle; everything holds while `en` is low; accumulation over K steps; `clear` zeroes all three registers | #6 |
+| `tb_input_skew_buffer` | `input_skew_buffer` | Every lane in every step 0 to T − 1, for both `COLUMN_LANES` values, against table 7.2; zeros while `en` is low; writes to every address | #10 |
+| `tb_output_buffer` | `output_buffer` | `capture` loads all N² values; values hold without `capture`; every address reads back | #10 |
+| `tb_sa_controller` | `sa_controller` | State sequence; T compute cycles and T + 2 busy cycles; `cycle_count`; `start` ignored while busy; back-to-back runs; reset in the middle of a run; for N = 3 and N = 4 | #7 |
+| `tb_systolic_array` | `systolic_array` | Identity, all-ones, a known product and negative values, with skewed edge inputs driven by the testbench; N = 3 and N = 4 | #3 |
+| `tb_systolic_top` | `systolic_top` | Every directed case and 100 random cases from the vectors; `cycle_count == K + 2N`; writes during a run are ignored; back-to-back runs | #11 |
+
+## 11. Performance model
+
+| Metric | Formula | N = K = 4 |
+|---|---|---|
+| Compute cycles `T` | `K + 2N − 2` | 10 |
+| Busy cycles, `start` to `done` | `K + 2N` | 12 |
+| Multiply-accumulates per product | `N²K` | 64 |
+| Peak multiply-accumulates per cycle | `N²` | 16 |
+| PE utilization during compute | `N²K / (N²T) = K / T` | 40% |
+| Single sequential MAC (baseline) | `N²K` cycles | 64 |
+| Speed-up over the baseline, compute only | `N²K / T` | 6.4× |
+| Speed-up over the baseline, busy cycles | `N²K / (K + 2N)` | 5.3× |
+
+Utilization is 40% because the wavefront takes 2N − 2 cycles to fill and drain the array; it approaches 100% as K grows. Loading A and B takes 16 cycles and reading C takes another 16, so one complete product, including I/O, takes about 16 + 12 + 16 = 44 cycles. The narrow one-element ports, not the array, limit end-to-end throughput, which is one of the Phase 2 topics below.
+
+The prototype must reproduce the first two rows exactly in simulation (#7, #11). The rest are derived from them and from the baseline formula. Phase 2 measures the baseline in RTL.
+
+## 12. Phase 2 extensions
+
+None of this binds Phase 1. It is recorded here so Phase 1 choices do not block it.
+
+- A single-MAC sequential baseline, `rtl/baseline/seq_matmul.v`, with the same host interface as `systolic_top`, for a measured speed-up.
+- Synthesis with Yosys, and with Vivado if available: LUTs, flip-flops, DSP blocks and maximum frequency. The combinational skew lanes feed the multipliers directly, so the critical path probably runs from `step` through the lane multiplexer, the multiplier and the adder. Registering the lanes adds one cycle to `T`.
+- K ≠ N and tiling for matrices larger than the array; overlapping load, compute and readout with double-buffered A, B and C.
+- Rounding and saturating results back to `DATA_W` bits for a fixed-point output.
