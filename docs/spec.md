@@ -283,7 +283,7 @@ stateDiagram-v2
   [*] --> IDLE
   IDLE --> CLEAR: start
   CLEAR --> COMPUTE
-  COMPUTE --> COMPUTE: step < T-1
+  COMPUTE --> COMPUTE: step != T-1
   COMPUTE --> CAPTURE: step == T-1
   CAPTURE --> DONE
   DONE --> CLEAR: start
