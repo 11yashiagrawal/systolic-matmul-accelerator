@@ -1,4 +1,8 @@
 % Proposed solution: processing element and MAC microarchitecture (issue #9).
 
 \subsection{Processing Element and MAC Unit}
-To be written in \#9.
+Each processing element (PE) owns one output element $C[i][j]$. It holds a multiply-accumulate unit (MAC) and two forwarding registers. The MAC multiplies two signed 8-bit operands into a 16-bit product, sign-extends that product to a 32-bit accumulator, and adds it to the running sum in every enabled cycle. The product is formed at its natural width before the sign extension, so the sign bit is never read as zero. Clear has priority over enable, and reset behaves like clear.
+
+The PE also registers its operands. The left operand $a$ is copied to the right neighbour and the top operand $b$ to the neighbour below, one enabled cycle later. Each operand therefore moves one PE per cycle, which is what lets the skewed inputs meet at PE $(i,j)$ in the cycle that the term $A[i][k]B[k][j]$ needs.
+
+The accumulator width follows from the largest possible sum. For $K = N = 4$ the largest magnitude is $K \cdot 2^{2\cdot\mathrm{DATA\_W}-2} = 4 \cdot 2^{14} = 65{,}536$, reached when every operand is $-128$. That needs 18 bits, so a 32-bit accumulator cannot overflow for any $K$ below 131{,}072. The datapath therefore does not saturate. Rounding and saturating back to 8 bits are left for Phase 2.
