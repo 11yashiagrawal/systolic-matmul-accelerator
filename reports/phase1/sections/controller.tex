@@ -1,4 +1,25 @@
 % Proposed solution: controller FSM (issue #9).
 
 \subsection{Controller}
-To be written in \#9.
+The controller sequences one matrix multiplication through five states, shown in Fig.~\ref{fig:fsm}. Its outputs are decoded from the state register, so they change only on clock edges. In \texttt{CLEAR} the accumulators and forwarding registers are zeroed. \texttt{COMPUTE} then runs for $T = K + 2N - 2$ cycles, which is 10 for $N = 4$: the last PE, $(N{-}1, N{-}1)$, adds its last product in step $T-1$. \texttt{CAPTURE} copies every accumulator into the output buffer, and \texttt{DONE} holds the result while \texttt{done} is high. A \texttt{start} pulse is accepted only in \texttt{IDLE} and \texttt{DONE} and is ignored while the array is busy. A full run keeps the controller busy for $K + 2N = 12$ cycles, and \texttt{cycle\_count} reports that number when the run ends.
+
+\begin{figure}[t]
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[>=Stealth, node distance=12mm,
+  st/.style={draw, rounded corners=2pt, font=\small, minimum width=18mm, minimum height=7mm, align=center}]
+  \node[st] (idle) {IDLE};
+  \node[st, right=of idle] (clear) {CLEAR};
+  \node[st, right=of clear] (comp) {COMPUTE};
+  \node[st, right=20mm of comp] (cap) {CAPTURE};
+  \node[st, right=of cap] (done) {DONE};
+  \draw[->] (idle) -- node[above, font=\scriptsize] {start} (clear);
+  \draw[->] (clear) -- (comp);
+  \draw[->] (comp) -- node[above, font=\scriptsize] {$\mathrm{step}{=}T{-}1$} (cap);
+  \draw[->] (cap) -- (done);
+  \draw[->] (done.south) -- ++(0,-5mm) -| node[below, font=\scriptsize, pos=0.25] {start} (clear.south);
+  \draw[->] (comp.north west) to[out=110, in=70, looseness=3] node[above, font=\scriptsize] {$\mathrm{step}{<}T{-}1$} (comp.north east);
+\end{tikzpicture}}
+\caption{Controller state-transition diagram. \texttt{busy} is high in \texttt{CLEAR}, \texttt{COMPUTE} and \texttt{CAPTURE}.}
+\label{fig:fsm}
+\end{figure}
