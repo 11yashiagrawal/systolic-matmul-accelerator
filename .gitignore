@@ -6,7 +6,7 @@ build/
 *.lxt
 *.lxt2
 obj_dir/
-sim/vectors/
+sim/vectors
 
 # ---- Synthesis outputs (Phase 2; reports we keep are copied to results/) ----
 synth/out/
