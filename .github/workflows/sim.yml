@@ -1,0 +1,41 @@
+name: Simulation
+
+on:
+  pull_request:
+  push:
+    branches: [dev]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sim:
+    name: Lint and simulate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install simulators and golden-model dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y iverilog verilator
+          if [ -f model/requirements.txt ]; then
+            python -m pip install -r model/requirements.txt
+          fi
+          python -m pip install numpy
+      - name: Lint and run every available testbench
+        run: make lint test
+      - name: Keep diagnostic logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulation-logs
+          path: build/*.log
+          if-no-files-found: ignore
