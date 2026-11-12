@@ -1,0 +1,54 @@
+# ---- Simulation and build outputs (regenerate with make) ----
+build/
+*.vvp
+*.vcd
+*.fst
+*.lxt
+*.lxt2
+obj_dir/
+sim/vectors/
+
+# ---- Synthesis outputs (Phase 2; reports we keep are copied to results/) ----
+synth/out/
+*.jou
+*.str
+.Xil/
+vivado*.log
+*.dcp
+
+# ---- Local-only course material and private planning ----
+context/
+
+# ---- Python (golden model) ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# ---- LaTeX build files ----
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+
+# Simulation and synthesis logs kept as evidence live under results/ and are committed.
+!results/**/*.log
+
+# ---- Video files (upload the video and link it instead) ----
+*.mp4
+*.mov
+*.mkv
+
+# ---- OS / editor / tools ----
+.DS_Store
+.vscode/
+.idea/
+.remember/
+.claude/

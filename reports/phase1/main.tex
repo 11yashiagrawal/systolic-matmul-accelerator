@@ -1,0 +1,58 @@
+% Phase 1 report. Each section lives in sections/<name>.tex and is written by its
+% owner (see the section issues); this file only sets up the template and the order.
+% Build from this folder: `tectonic main.tex`, or pdflatex + bibtex (e.g. Overleaf).
+
+\documentclass[conference]{IEEEtran}
+
+\usepackage{iftex}
+\ifXeTeX
+  % Tectonic and xelatex: Times-like text to match pdflatex's IEEEtran output.
+  \usepackage{fontspec}
+  \defaultfontfeatures{Extension=.otf, UprightFont=*-regular, BoldFont=*-bold,
+    ItalicFont=*-italic, BoldItalicFont=*-bolditalic}
+  \setmainfont{texgyretermes}
+  \setsansfont{texgyreheros}
+  \setmonofont{texgyrecursor}
+\fi
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+
+% Figures come from this folder and from the committed results.
+\graphicspath{{figures/}{../../results/phase1/waveforms/}{../../docs/architecture/png/}}
+
+\begin{document}
+
+\title{A Parameterized Output-Stationary Systolic Array\\
+for Fixed-Point Matrix Multiplication:\\
+Phase 1 Prototype}
+
+\author{\IEEEauthorblockN{Gokul VKS, Milind Bansal, Isha Tomar, Yashi Agrawal and Mohammad Affan Anas}
+\IEEEauthorblockA{Newton School of Technology, Rishihood University\\
+Code and results: \url{https://github.com/vks-g/systolic-matmul-accelerator}}}
+
+\maketitle
+
+\input{sections/abstract}
+
+\input{sections/introduction}
+\input{sections/literature_review}
+\input{sections/architecture_overview}
+\input{sections/pe_mac}
+\input{sections/dataflow}
+\input{sections/controller}
+\input{sections/verification}
+\input{sections/prototype_status}
+\input{sections/contributions}
+
+% Remove this line once the sections cite their references (#16).
+\nocite{*}
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}
