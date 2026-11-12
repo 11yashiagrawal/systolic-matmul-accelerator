@@ -231,3 +231,93 @@ Parameters: `N`, `DATA_W`, `ACC_W`, `CYC_W`. This is the matrix data interface t
 | `cycle_count` | out | `CYC_W` | Busy cycles of the last run |
 
 Wiring: each buffer's `we` is the host's write enable ANDed with `!busy`, so writes during a run are ignored and cannot corrupt the operands in flight. The controller's `en` and `step` go to both buffers, `clear` and `en` go to the array, and `capture` goes to the output buffer.
+
+## 7. Timing
+
+### 7.1 When operands meet
+
+Number the `COMPUTE` cycles with the step `t = 0, 1, …, T − 1`. The skew buffers put `A[i][t − i]` on lane i of `a_left` and `B[t − j][j]` on lane j of `b_top`. Each PE adds one cycle of delay in each direction, so in step t PE (i, j) sees
+
+```
+a_in = A[i][t - i - j]      b_in = B[t - i - j][j]
+```
+
+Both carry the same index `k = t − i − j`, so PE (i, j) adds the term `A[i][k] * B[k][j]` in step `t = i + j + k`. Outside `0 <= k < K` both operands are zero and the product adds nothing.
+
+PE (i, j) is busy from step `i + j` to step `i + j + K − 1`. The last PE, (N−1, N−1), adds its last term in step `K + 2N − 3`, so `COMPUTE` lasts
+
+```
+T = K + 2N - 2 cycles        (10 for N = K = 4)
+```
+
+### 7.2 Edge inputs for N = 4
+
+`Aik` means `A[i][k]`, and `·` means 0.
+
+| Step t | `a_left[0]` | `a_left[1]` | `a_left[2]` | `a_left[3]` | `b_top[0]` | `b_top[1]` | `b_top[2]` | `b_top[3]` |
+|---|---|---|---|---|---|---|---|---|
+| 0 | A00 | · | · | · | B00 | · | · | · |
+| 1 | A01 | A10 | · | · | B10 | B01 | · | · |
+| 2 | A02 | A11 | A20 | · | B20 | B11 | B02 | · |
+| 3 | A03 | A12 | A21 | A30 | B30 | B21 | B12 | B03 |
+| 4 | · | A13 | A22 | A31 | · | B31 | B22 | B13 |
+| 5 | · | · | A23 | A32 | · | · | B32 | B23 |
+| 6 | · | · | · | A33 | · | · | · | B33 |
+| 7–9 | · | · | · | · | · | · | · | · |
+
+The edges go quiet after step 6, but the last operands are still moving through the array until step 9.
+
+The wavefront in step 3 shows which term `k` each PE is adding (`–` means the PE is idle):
+
+| | j = 0 | j = 1 | j = 2 | j = 3 |
+|---|---|---|---|---|
+| **i = 0** | k = 3 | k = 2 | k = 1 | k = 0 |
+| **i = 1** | k = 2 | k = 1 | k = 0 | – |
+| **i = 2** | k = 1 | k = 0 | – | – |
+| **i = 3** | k = 0 | – | – | – |
+
+### 7.3 Controller FSM
+
+```mermaid
+stateDiagram-v2
+  [*] --> IDLE
+  IDLE --> CLEAR: start
+  CLEAR --> COMPUTE
+  COMPUTE --> COMPUTE: step < T-1
+  COMPUTE --> CAPTURE: step == T-1
+  CAPTURE --> DONE
+  DONE --> CLEAR: start
+```
+
+| State | Outputs high | Next state | `step` at the edge | `cycle_count` at the edge |
+|---|---|---|---|---|
+| `IDLE` | none | `CLEAR` if `start`, else `IDLE` | 0 | 0 if `start`, else hold |
+| `CLEAR` | `busy`, `clear` | `COMPUTE` | 0 | +1 |
+| `COMPUTE` | `busy`, `en` | `CAPTURE` if `step == T − 1`, else `COMPUTE` | +1, or 0 when leaving | +1 |
+| `CAPTURE` | `busy`, `capture` | `DONE` | 0 | +1 |
+| `DONE` | `done` | `CLEAR` if `start`, else `DONE` | 0 | 0 if `start`, else hold |
+
+`CLEAR` takes one cycle, so the accumulators and forwarding registers are zero before step 0. `CAPTURE` takes one cycle, because the last product lands in the accumulators at the end of step `T − 1` and can be copied only at the next edge. The state encoding is up to the implementer.
+
+### 7.4 One run, cycle by cycle (N = 4)
+
+Cycle c0 is the cycle in which the host holds `start` high.
+
+| Cycle | State | `busy` | `done` | `clear` | `en` | `step` | `capture` | `cycle_count` | At the end of the cycle |
+|---|---|---|---|---|---|---|---|---|---|
+| c0 | `IDLE` | 0 | 0 | 0 | 0 | 0 | 0 | old value | `start` accepted, `cycle_count <= 0` |
+| c1 | `CLEAR` | 1 | 0 | 1 | 0 | 0 | 0 | 0 | accumulators and forwarding registers cleared |
+| c2 | `COMPUTE` | 1 | 0 | 0 | 1 | 0 | 0 | 1 | PE (0, 0) adds A00·B00 |
+| c3 – c10 | `COMPUTE` | 1 | 0 | 0 | 1 | 1 – 8 | 0 | 2 – 9 | the wavefront moves across the array |
+| c11 | `COMPUTE` | 1 | 0 | 0 | 1 | 9 | 0 | 10 | PE (3, 3) adds A33·B33 |
+| c12 | `CAPTURE` | 1 | 0 | 0 | 0 | 0 | 1 | 11 | output buffer loads all accumulators |
+| c13 | `DONE` | 0 | 1 | 0 | 0 | 0 | 0 | 12 | C is readable |
+
+In general `busy` is high for `T + 2 = K + 2N` cycles (12 for N = 4), and `cycle_count` holds that number in `DONE`. Of those cycles, `T` are compute cycles with `en` high.
+
+### 7.5 Handshake rules
+
+- `start` is a one-cycle pulse. It is sampled only in `IDLE` and `DONE` and ignored while `busy` is high. If it is still high when the controller reaches `DONE`, a new run starts at once, so drop it after one cycle.
+- Writes to A and B are accepted only while `busy` is low; the top level ignores them during a run. A and B keep their contents between runs, so a host can replace just one matrix before the next `start`.
+- C is valid while `done` is high. It stays readable after the next `start`, until that run's `CAPTURE` cycle replaces it.
+- `rst_n` low at a rising edge returns the controller to `IDLE` and zeroes A, B, the accumulators, the results and `cycle_count`. After reset, every address of C reads 0.
