@@ -80,6 +80,7 @@ acc <= acc + {{(ACC_W-2*DATA_W){prod[2*DATA_W-1]}}, prod};
 ## 5. Conventions for every module
 
 - Synthesizable Verilog-2005. Each file starts with `` `default_nettype none `` and ends with `` `default_nettype wire ``.
+- Every file, RTL and testbench alike, declares `` `timescale 1ns / 1ps `` on its first code line. If only some files declare it, Icarus warns that the others inherit it, and waveforms are easier to read in nanoseconds than in the default seconds. Testbenches use a 10 ns clock period.
 - One clock, `clk`; every register updates on its rising edge.
 - Reset is **synchronous and active-low**: `rst_n = 0` at a rising edge puts every register in this design into its reset value (zero, or `IDLE` for the controller).
 - Ports that carry one value are declared `signed`. Ports that carry several values are flattened, unsigned buses with lane `l` at `[l*W +: W]`.
