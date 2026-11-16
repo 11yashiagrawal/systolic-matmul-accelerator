@@ -19,8 +19,16 @@
 \usepackage{graphicx}
 \usepackage{url}
 \usepackage{booktabs}
+\usepackage{array}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning}
+% Load last: makes the repository and video URLs and the cross-references
+% clickable, and fills in the PDF's title and author fields.
+\usepackage[hidelinks]{hyperref}
+\hypersetup{
+  pdftitle={A Parameterized Output-Stationary Systolic Array for Fixed-Point Matrix Multiplication: Phase 1 Prototype},
+  pdfauthor={Gokul VKS, Milind Bansal, Isha Tomar, Yashi Agrawal, Mohammad Affan Anas},
+  pdfkeywords={systolic array, matrix multiplication, hardware accelerator, Verilog}}
 
 % Figures come from this folder and from the committed results.
 \graphicspath{{figures/}{../../results/phase1/waveforms/}{../../docs/architecture/png/}}
@@ -33,7 +41,8 @@ Phase 1 Prototype}
 
 \author{\IEEEauthorblockN{Gokul VKS, Milind Bansal, Isha Tomar, Yashi Agrawal and Mohammad Affan Anas}
 \IEEEauthorblockA{Newton School of Technology, Rishihood University\\
-Code and results: \url{https://github.com/vks-g/systolic-matmul-accelerator}}}
+Code and results: \url{https://github.com/vks-g/systolic-matmul-accelerator}\\
+Prototype video: \url{https://drive.google.com/drive/folders/1d-p1YpFjd7gjbm1XGEC8u5PCso8LQxUw}}}
 
 \maketitle
 
@@ -47,10 +56,13 @@ Code and results: \url{https://github.com/vks-g/systolic-matmul-accelerator}}}
 \input{sections/controller}
 \input{sections/verification}
 \input{sections/prototype_status}
+\input{sections/conclusion}
 \input{sections/contributions}
 
-% Remove this line once the sections cite their references (#16).
-\nocite{*}
+% Balance the two columns of the last page (IEEE template rule) by starting the
+% right column at this reference. Check it after any change that moves the
+% references, and delete it if the last page no longer needs it.
+\IEEEtriggeratref{8}
 
 \bibliographystyle{IEEEtran}
 \bibliography{refs}

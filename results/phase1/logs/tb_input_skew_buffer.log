@@ -1,0 +1,3 @@
+VCD info: dumpfile build/tb_input_skew_buffer.vcd opened for output.
+PASS tb_input_skew_buffer 496/496
+tb/tb_input_skew_buffer.v:204: $finish called at 270000 (1ps)

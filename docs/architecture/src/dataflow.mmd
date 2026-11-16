@@ -1,0 +1,52 @@
+block-beta
+  %% Title: Skewed wavefront across a 4 by 4 grid at compute step 3
+  %% Description: A moves right and B moves down, one PE per enabled cycle. Row i and column j are delayed by i and j cycles. At step 3 the active term index is k equals 3 minus i minus j. The k equals zero diagonal runs from PE 0,3 to PE 3,0; cells beyond it add zero. Every PE retains C locally.
+  columns 5
+  title["N = K = 4 · COMPUTE step t = 3<br/>A → right; B ↓ down · k = t − i − j"]:5
+  space bt0["b_top[0]<br/>B[3][0]<br/>delay 0"] bt1["b_top[1]<br/>B[2][1]<br/>delay 1"] bt2["b_top[2]<br/>B[1][2]<br/>delay 2"] bt3["b_top[3]<br/>B[0][3]<br/>delay 3"]
+  al0["a_left[0]<br/>A[0][3]<br/>delay 0"] p00["PE (0,0)<br/>k = 3<br/>C[0][0]"] p01["PE (0,1)<br/>k = 2<br/>C[0][1]"] p02["PE (0,2)<br/>k = 1<br/>C[0][2]"] p03["PE (0,3)<br/>k = 0<br/>C[0][3]"]
+  al1["a_left[1]<br/>A[1][2]<br/>delay 1"] p10["PE (1,0)<br/>k = 2<br/>C[1][0]"] p11["PE (1,1)<br/>k = 1<br/>C[1][1]"] p12["PE (1,2)<br/>k = 0<br/>C[1][2]"] p13["PE (1,3)<br/>zero product<br/>C[1][3]"]
+  al2["a_left[2]<br/>A[2][1]<br/>delay 2"] p20["PE (2,0)<br/>k = 1<br/>C[2][0]"] p21["PE (2,1)<br/>k = 0<br/>C[2][1]"] p22["PE (2,2)<br/>zero product<br/>C[2][2]"] p23["PE (2,3)<br/>zero product<br/>C[2][3]"]
+  al3["a_left[3]<br/>A[3][0]<br/>delay 3"] p30["PE (3,0)<br/>k = 0<br/>C[3][0]"] p31["PE (3,1)<br/>zero product<br/>C[3][1]"] p32["PE (3,2)<br/>zero product<br/>C[3][2]"] p33["PE (3,3)<br/>zero product<br/>C[3][3]"]
+  legend["Green: leading diagonal k = 0 · Blue: later terms k = 1, 2, 3 · Gray: zero product<br/>All PEs update when en = 1; every C[i][j] stays in its accumulator"]:5
+  timing["First term at (0,0): t = 0 · First term at (3,3): t = 6 · Last term at (3,3): t = 9<br/>Edge inputs are zero at t = 7, 8, 9 while operands drain through the grid<br/>10 COMPUTE cycles; separate CLEAR + CAPTURE give 12 busy cycles"]:5
+
+  al0 --> p00
+  al1 --> p10
+  al2 --> p20
+  al3 --> p30
+  bt0 --> p00
+  bt1 --> p01
+  bt2 --> p02
+  bt3 --> p03
+  p00 --> p01
+  p01 --> p02
+  p02 --> p03
+  p10 --> p11
+  p11 --> p12
+  p12 --> p13
+  p20 --> p21
+  p21 --> p22
+  p22 --> p23
+  p30 --> p31
+  p31 --> p32
+  p32 --> p33
+  p00 --> p10
+  p10 --> p20
+  p20 --> p30
+  p01 --> p11
+  p11 --> p21
+  p21 --> p31
+  p02 --> p12
+  p12 --> p22
+  p22 --> p32
+  p03 --> p13
+  p13 --> p23
+  p23 --> p33
+
+  classDef first fill:#d9f0e4,stroke:#34735a,stroke-width:3px,color:#13263d
+  classDef quiet fill:#f0f2f5,stroke:#788797,color:#33475b
+  classDef note fill:#fff3d6,stroke:#8b6016,color:#13263d
+  class p03,p12,p21,p30 first
+  class p13,p22,p23,p31,p32,p33 quiet
+  class title,legend,timing note

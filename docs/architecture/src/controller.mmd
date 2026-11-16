@@ -1,0 +1,34 @@
+stateDiagram-v2
+  accTitle: Controller state transitions and cycle accounting
+  accDescr: Synchronous active-low reset takes any state to IDLE. Start is accepted only in IDLE or DONE. CLEAR and CAPTURE each last one cycle. COMPUTE runs steps zero through T minus one. DONE persists until another start. Busy cycles increment cycle_count to T plus two.
+  direction LR
+
+  state "IDLE<br/>busy = 0; done = 0<br/>hold while !start" as IDLE
+  state "CLEAR<br/>busy = 1; clear = 1<br/>1 cycle" as CLEAR
+  state "COMPUTE<br/>busy = 1; en = 1<br/>step = 0 … T − 1" as COMPUTE
+  state "CAPTURE<br/>busy = 1; capture = 1<br/>1 cycle" as CAPTURE
+  state "DONE<br/>busy = 0; done = 1<br/>hold while !start<br/>cycle_count = T + 2" as DONE
+
+  [*] --> IDLE: synchronous reset
+  IDLE --> IDLE
+  IDLE --> CLEAR: start
+  CLEAR --> COMPUTE
+  COMPUTE --> COMPUTE: step != T − 1
+  COMPUTE --> CAPTURE: step == T − 1
+  CAPTURE --> DONE
+  DONE --> DONE
+  DONE --> CLEAR: start
+
+  note left of IDLE
+    Any state + !rst_n at rising clk:
+    IDLE; step = 0; cycle_count = 0
+    Unlisted control outputs = 0
+  end note
+  note left of COMPUTE
+    T = K + 2N − 2 = 10 (N = K = 4)
+    start ignored while busy
+    step increments on self-loop; 0 elsewhere
+    Accepted start zeroes cycle_count
+    Each busy edge increments cycle_count
+    cycle_count holds 12 in DONE
+  end note

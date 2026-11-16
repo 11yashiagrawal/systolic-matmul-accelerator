@@ -1,0 +1,37 @@
+---
+config:
+  themeCSS: ".edgeLabel .label { transform: translateY(-30px); }"
+  flowchart:
+    nodeSpacing: 24
+    rankSpacing: 20
+    padding: 10
+    wrappingWidth: 600
+    subGraphTitleMargin:
+      top: 10
+      bottom: 16
+---
+flowchart TB
+  accTitle: System architecture — output-stationary matrix multiplication
+  accDescr: The systolic_top host write ports load two input_skew_buffer instances only while busy is low. A storage and row skew and B storage and column skew feed the N by N systolic_array. Each PE retains its result. The output_buffer captures all accumulators and serves the host read port. Above the datapath, sa_controller accepts start, returns busy, done and cycle_count, and drives the listed control signals.
+
+  subgraph top["systolic_top"]
+    direction TB
+    ctrl["sa_controller<br/>Host: start in; busy, done, cycle_count out<br/>busy → write gating; en, step → skew buffers<br/>clear, en → array; capture → output buffer"]
+    subgraph datapath["Datapath"]
+      direction LR
+      wr["A/B write ports<br/>we / addr / wdata<br/>when !busy"]
+      buffers["input_skew_buffer ×2<br/>N × N storage each<br/>A: row skew<br/>B: column skew"]
+      arr["systolic_array<br/>N × N PEs<br/>C stays local"]
+      obuf["output_buffer<br/>capture / hold C<br/>c_addr → c_rdata"]
+      wr --> buffers
+      buffers -->|"a_left, b_top"| arr
+      arr -->|"acc_flat"| obuf
+    end
+    ctrl -.-> datapath
+    shared["Shared clk; synchronous active-low rst_n<br/>Defaults: N = 4, DATA_W = 8, ACC_W = 32"]
+    datapath ~~~ shared
+  end
+  classDef control fill:#fff3d6,stroke:#8b6016,color:#13263d
+  classDef note fill:#f3f5f8,stroke:#60758b,color:#13263d
+  class ctrl control
+  class shared note

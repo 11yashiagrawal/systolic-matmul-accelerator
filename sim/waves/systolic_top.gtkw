@@ -1,0 +1,47 @@
+[*]
+[*] Top-level waveform layout (issue #8): one run of the known product (golden
+[*] case 5) through the host ports, then C read one element per cycle.
+[*] From the repository root:
+[*]   make sim-systolic_top
+[*]   gtkwave -r sim/waves/report.gtkwaverc sim/waves/systolic_top.gtkw
+[*] state: 0 IDLE, 1 CLEAR, 2 COMPUTE, 3 CAPTURE, 4 DONE.
+[*] Markers: A start taken, B CAPTURE, C done, D C[1][2] = 278 on the read port.
+[*]
+[dumpfile] "build/tb_systolic_top.vcd"
+[timestart] 2586000
+[size] 1250 760
+[pos] -1 -1
+*-15.270000 2605000 2605000 2715000 2725000 2786000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[markername] AA start
+[markername] BB cap
+[markername] CC done
+[markername] DD C12
+[treeopen] tb_systolic_top.
+[treeopen] tb_systolic_top.dut.
+[sst_width] 200
+[signals_width] 230
+[sst_expanded] 0
+[sst_vpaned_height] 200
+@28
+tb_systolic_top.clk
+tb_systolic_top.a_we
+tb_systolic_top.b_we
+tb_systolic_top.start
+tb_systolic_top.busy
+tb_systolic_top.done
+@200
+-Controller
+@24
++{state} tb_systolic_top.dut.u_controller.state[2:0]
++{step} tb_systolic_top.dut.u_controller.step[3:0]
+@28
++{en} tb_systolic_top.dut.u_controller.en
++{capture} tb_systolic_top.dut.u_controller.capture
+@24
++{cycle_count} tb_systolic_top.cycle_count[31:0]
+@200
+-Read port
+@24
++{c_addr} tb_systolic_top.c_addr[3:0]
+@424
++{c_rdata} tb_systolic_top.c_rdata[31:0]

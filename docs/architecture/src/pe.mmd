@@ -1,0 +1,30 @@
+flowchart LR
+  accTitle: Processing element — MAC and operand forwarding
+  accDescr: Signed a_in and b_in feed a combinational multiplier and independent forwarding registers. The natural-width product is sign-extended before addition to the accumulator. All three registers share synchronous reset, clear priority, and enable. The accumulator feeds back into the adder and holds C at this PE.
+
+  ai["a_in<br/>signed DATA_W<br/>from left"]
+  bi["b_in<br/>signed DATA_W<br/>from above"]
+  subgraph pe["pe (i, j)"]
+    ar["A forwarding register<br/>DATA_W bits<br/>a_out ← a_in<br/>→ right, 1 enabled cycle"]
+    br["B forwarding register<br/>DATA_W bits<br/>b_out ← b_in<br/>→ down, 1 enabled cycle"]
+    subgraph mac["mac"]
+      mul["Signed multiplier<br/>a_in × b_in<br/>2 × DATA_W bits"]
+      ext["Sign extension<br/>2 × DATA_W → ACC_W"]
+      add(("+"))
+      acc["Accumulator register<br/>signed ACC_W; acc = C[i][j]<br/>acc ← acc + product"]
+      mul --> ext --> add --> acc
+      acc -->|"feedback"| add
+    end
+    rule["At each rising clk edge, for ALL registers:<br/>1. !rst_n or clear → zero<br/>2. else en → update<br/>3. else → hold"]
+    rule -.-> ar
+    rule -.-> br
+    rule -.-> acc
+  end
+  ai --> mul
+  bi --> mul
+  ai --> ar
+  bi --> br
+  classDef reg fill:#e6f4ee,stroke:#34735a,color:#13263d
+  classDef note fill:#fff3d6,stroke:#8b6016,color:#13263d
+  class ar,br,acc reg
+  class rule note

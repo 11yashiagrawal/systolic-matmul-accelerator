@@ -89,6 +89,7 @@ Each commit should do one thing. "wip", "update", and "changes" are not commit m
 
 - `rtl/` holds **synthesizable Verilog-2005 only**: no `initial` blocks, no `#` delays, no `$display`.
 - One module per file, and the file is named after the module (`rtl/pe/pe.v` holds `module pe`).
+- Start every file, RTL and testbench, with `` `timescale 1ns / 1ps ``.
 - Start every RTL file with `` `default_nettype none `` and end it with `` `default_nettype wire ``.
 - Clock is `clk`. Reset is **synchronous, active-low** `rst_n`.
 - Sequential logic: `always @(posedge clk)` with non-blocking `<=`. Combinational logic: `always @(*)` with blocking `=`, and a default for every output first, so no latches are inferred.

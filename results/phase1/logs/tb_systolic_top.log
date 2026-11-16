@@ -1,0 +1,8 @@
+VCD info: dumpfile build/tb_systolic_top.vcd opened for output.
+vectors: N = 4, cases = 106
+vectors: seed = 1
+cases: 106 run, every element of C compared; cycle counts in results/phase1/cycle_counts.csv
+handshake: writes during a run ignored, back-to-back runs checked
+handshake: C readable until CAPTURE, one matrix replaced, reset mid-run checked
+PASS tb_systolic_top 2195/2195
+tb/tb_systolic_top.v:347: $finish called at 50796000 (1ps)

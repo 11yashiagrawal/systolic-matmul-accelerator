@@ -1,0 +1,5 @@
+# GTKWave settings for the report captures (issue #8): a larger signal-name
+# font and no splash window. From the repository root:
+#   gtkwave -r sim/waves/report.gtkwaverc sim/waves/pe.gtkw
+splash_disable 1
+fontname_signals Menlo 15

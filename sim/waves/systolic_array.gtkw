@@ -1,0 +1,53 @@
+[*]
+[*] Systolic array waveform layout (issue #8): the 4 x 4 array computing the
+[*] known product (A = 1..16 row-major, B = A transposed). From the repository root:
+[*]   make sim-systolic_array
+[*]   gtkwave -r sim/waves/report.gtkwaverc sim/waves/systolic_array.gtkw
+[*] Markers: A step 0, B PE(1,2) first product, C C[1][2] final, D C[3][3] final.
+[*]
+[dumpfile] "build/tb_systolic_array.vcd"
+[timestart] 233000
+[size] 1250 760
+[pos] -1 -1
+*-15.180000 255000 255000 285000 315000 345000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[markername] AA step 0
+[markername] BB 5x9
+[markername] CC C12=278
+[markername] DD C33=846
+[treeopen] tb_systolic_array.
+[treeopen] tb_systolic_array.t4.
+[sst_width] 200
+[signals_width] 230
+[sst_expanded] 0
+[sst_vpaned_height] 200
+@28
+tb_systolic_array.t4.clk
+tb_systolic_array.t4.clear
+tb_systolic_array.t4.en
+@200
+-A in, row i waits i cycles
+@424
++{A row 0} tb_systolic_array.t4.dut.g_row[0].g_col[0].u_pe.a_in[7:0]
++{A row 1} tb_systolic_array.t4.dut.g_row[1].g_col[0].u_pe.a_in[7:0]
++{A row 2} tb_systolic_array.t4.dut.g_row[2].g_col[0].u_pe.a_in[7:0]
++{A row 3} tb_systolic_array.t4.dut.g_row[3].g_col[0].u_pe.a_in[7:0]
+@200
+-B in, column j waits j cycles
+@424
++{B col 0} tb_systolic_array.t4.dut.g_row[0].g_col[0].u_pe.b_in[7:0]
++{B col 1} tb_systolic_array.t4.dut.g_row[0].g_col[1].u_pe.b_in[7:0]
++{B col 2} tb_systolic_array.t4.dut.g_row[0].g_col[2].u_pe.b_in[7:0]
++{B col 3} tb_systolic_array.t4.dut.g_row[0].g_col[3].u_pe.b_in[7:0]
+@200
+-PE(1,2): A[1][k] meets B[k][2]
+@424
++{a_in} tb_systolic_array.t4.dut.g_row[1].g_col[2].u_pe.a_in[7:0]
++{b_in} tb_systolic_array.t4.dut.g_row[1].g_col[2].u_pe.b_in[7:0]
++{acc C[1][2]} tb_systolic_array.t4.dut.g_row[1].g_col[2].u_pe.acc[31:0]
+@200
+-Diagonal PEs finish in turn
+@424
++{acc C[0][0]} tb_systolic_array.t4.dut.g_row[0].g_col[0].u_pe.acc[31:0]
++{acc C[1][1]} tb_systolic_array.t4.dut.g_row[1].g_col[1].u_pe.acc[31:0]
++{acc C[2][2]} tb_systolic_array.t4.dut.g_row[2].g_col[2].u_pe.acc[31:0]
++{acc C[3][3]} tb_systolic_array.t4.dut.g_row[3].g_col[3].u_pe.acc[31:0]
