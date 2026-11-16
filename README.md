@@ -10,10 +10,36 @@ Modern Computer Architecture, Project 12: Systolic Array Matrix Multiplication A
 [![Verilog-2005](https://img.shields.io/badge/RTL-Verilog--2005-2a78d6)](rtl/)
 [![Simulator: Icarus Verilog](https://img.shields.io/badge/sim-Icarus_Verilog-1baf7a)](docs/setup.md)
 [![Lint: Verilator](https://img.shields.io/badge/lint-Verilator-5319e7)](docs/setup.md)
+[![Simulation CI](https://github.com/vks-g/systolic-matmul-accelerator/actions/workflows/sim.yml/badge.svg?branch=dev)](https://github.com/vks-g/systolic-matmul-accelerator/actions/workflows/sim.yml)
 
-[Phase 1 report (PDF)](reports/phase1/main.pdf) · [Prototype video (4:42)](https://drive.google.com/drive/folders/1d-p1YpFjd7gjbm1XGEC8u5PCso8LQxUw?usp=sharing) · [Setup guide](docs/setup.md) · [Contributing](CONTRIBUTING.md)
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://drive.google.com/drive/folders/1d-p1YpFjd7gjbm1XGEC8u5PCso8LQxUw?usp=sharing"><img src="media/phase1/video_thumbnail.jpg" alt="Watch the Phase 1 prototype video (4:42)"></a>
+      <br><b><a href="https://drive.google.com/drive/folders/1d-p1YpFjd7gjbm1XGEC8u5PCso8LQxUw?usp=sharing">▶ Watch the prototype video</a></b>
+      <br>4:42 · all five members present their work
+    </td>
+    <td align="center" width="50%">
+      <a href="reports/phase1/main.pdf"><img src="media/phase1/report_thumbnail.jpg" alt="Read the Phase 1 IEEE report (PDF)"></a>
+      <br><b><a href="reports/phase1/main.pdf">Read the IEEE report (PDF)</a></b>
+      <br>7 pages · <a href="reports/phase1/">LaTeX source</a>
+    </td>
+  </tr>
+</table>
+
+[Setup guide](docs/setup.md) · [Architecture spec](docs/spec.md) · [Results](#results) · [Team](#team) · [Contributing](CONTRIBUTING.md)
 
 </div>
+
+## Phase 1 deliverables
+
+| Required | Where it is |
+|---|---|
+| IEEE report: abstract, literature review, proposed solution, individual contributions, references | [`reports/phase1/main.pdf`](reports/phase1/main.pdf), built from [`reports/phase1/`](reports/phase1/) |
+| Prototype video, at most 5 minutes | [Google Drive, 4:42](https://drive.google.com/drive/folders/1d-p1YpFjd7gjbm1XGEC8u5PCso8LQxUw?usp=sharing); [script and segment notes](media/phase1/README.md) |
+| Prototype files and implementation | [`rtl/`](rtl/) Verilog, [`tb/`](tb/) self-checking testbenches, [`model/`](model/) Python golden model, [`Makefile`](Makefile) |
+| Project artefacts | [simulation logs, waveform captures and cycle counts](results/phase1/), [architecture diagrams](docs/architecture/README.md), [interface and timing spec](docs/spec.md) |
+| Individual contributions | Section VII of the report, the [team table](#team) below, and each member's commits and pull requests |
 
 ## Idea
 
@@ -63,7 +89,7 @@ and GTKWave or Surfer using the [platform-specific setup guide](docs/setup.md).
 The viewer is needed only for `make waves`; lint and tests run without a GUI.
 
 ```sh
-git clone --branch dev https://github.com/vks-g/systolic-matmul-accelerator.git
+git clone https://github.com/vks-g/systolic-matmul-accelerator.git
 cd systolic-matmul-accelerator
 python3 -m venv .venv
 . .venv/bin/activate
@@ -165,6 +191,12 @@ explain this and the PE/array captures. Full results and limitations are in the
 shows all five members and the working simulation. See the
 [video notes and script](media/phase1/README.md).
 
+## Next: Phase 2
+
+- Synthesize the design to measure its resource use and maximum clock frequency.
+- Build the sequential single-MAC baseline in RTL, so the speed-up is measured rather than derived.
+- Add tiling, so the array can multiply matrices larger than itself.
+
 ## Repository structure
 
 ```
@@ -187,12 +219,12 @@ shows all five members and the working simulation. See the
 
 ## Team
 
-| Name | GitHub |
-|---|---|
-| Gokul VKS (lead) | [@vks-g](https://github.com/vks-g) |
-| Milind Bansal | [@MilindDevX](https://github.com/MilindDevX) |
-| Isha Tomar | [@Bytebard089](https://github.com/Bytebard089) |
-| Yashi Agrawal | [@11yashiagrawal](https://github.com/11yashiagrawal) |
-| Mohammad Affan Anas | [@affan80](https://github.com/affan80) |
+| Name | GitHub | Phase 1 work |
+|---|---|---|
+| Gokul VKS (lead) | [@vks-g](https://github.com/vks-g) | Architecture spec and interface contract, array grid, top level, report assembly, video edit |
+| Milind Bansal | [@MilindDevX](https://github.com/MilindDevX) | MAC unit and processing element, controller, waveform captures, PE and controller report sections |
+| Isha Tomar | [@Bytebard089](https://github.com/Bytebard089) | Input skew and output buffers, end-to-end testbench, video script, dataflow and status report sections |
+| Yashi Agrawal | [@11yashiagrawal](https://github.com/11yashiagrawal) | Python golden model and test-vector generator, literature review and references |
+| Mohammad Affan Anas | [@affan80](https://github.com/affan80) | Setup guide, Makefile and CI, architecture diagrams, README, verification report section, clean-clone check |
 
-Who built what is tracked through the GitHub issues and listed in the report's Individual Contributions section.
+Each piece of work was tracked in a GitHub issue and merged into `dev` through a pull request, so the commit history shows who wrote what. The report's Individual Contributions section (Section VII) has the full list.
