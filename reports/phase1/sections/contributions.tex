@@ -1,7 +1,7 @@
 % Individual contributions (issue #5). Each member checks their own row.
 
 \section{Individual Contributions}
-Every module, testbench, model script and report section has one owner, assigned through a GitHub issue. Each member committed their own work through pull requests into a shared integration branch, and every pull request was reviewed before merging. Table~\ref{tab:contrib} lists who did what.
+Every module, testbench, model script and report section has one owner, assigned through a GitHub issue. Each member committed their own work from their own GitHub account through pull requests into a shared integration branch, where continuous integration lints the RTL and runs every testbench. Table~\ref{tab:contrib} lists who did what.
 
 \begin{table}[ht]
 \centering
@@ -12,15 +12,15 @@ Every module, testbench, model script and report section has one owner, assigned
 \toprule
 Member & Contribution \\
 \midrule
-Gokul VKS (lead) & Architecture specification and interface contract; systolic array grid and its testbench; top-level integration; repository, issues and reviews; abstract, introduction, architecture overview and report assembly \\
+Gokul VKS (lead) & Architecture specification and interface contract; systolic array grid and its testbench; top-level integration; repository, issues and pull-request reviews; the lines each member reads in the video; abstract, introduction, architecture overview and report assembly \\
 \addlinespace
-Milind Bansal & Multiply-accumulate unit and processing element; controller state machine; their testbenches; waveform captures; report sections on the PE and the controller \\
+Milind Bansal & Multiply-accumulate unit and processing element; controller state machine; their testbenches; waveform layouts and captures; report sections on the PE and the controller \\
 \addlinespace
-Isha Tomar & Input skew buffers and output buffer with their testbenches; end-to-end accelerator testbench and cycle counts; video script and edit; report sections on the dataflow and the prototype status \\
+Isha Tomar & Input skew buffers and output buffer with their testbenches; end-to-end accelerator testbench with golden vectors and cycle counts; video script, segment timing and storyboard; report sections on the dataflow and the prototype status \\
 \addlinespace
-Yashi Agrawal & Python golden model and test-vector generator; literature review; bibliography \\
+Yashi Agrawal & Python golden model and test-vector generator; literature review and its references \\
 \addlinespace
-Mohammad Affan Anas & Toolchain setup guide, Makefile and continuous-integration workflow; architecture diagrams; README; verification methodology section; clean-clone release check \\
+Mohammad Affan Anas & Toolchain setup guide, Makefile and continuous-integration workflow; architecture diagrams; verification methodology section; clean-clone release check \\
 \bottomrule
 \end{tabular}
 \end{table}

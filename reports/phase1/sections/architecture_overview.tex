@@ -30,12 +30,12 @@ $T$ & compute cycles, $K + 2N - 2$ & 10 \\
 \end{tabular}
 \end{table}
 
-\begin{figure}[t]
+\begin{figure*}[t]
 \centering
-\includegraphics[width=\columnwidth]{system.png}
+\includegraphics[width=\textwidth]{system.png}
 \caption{System architecture. Solid arrows carry data and dashed arrows carry controller signals. Host writes reach the input skew buffers only while \texttt{busy} is low. Each buffer stores one matrix and selects its skewed lanes from \texttt{step}. The controller clears the array, enables it for $T$ steps and then captures the accumulators into the output buffer, which serves the read port.}
 \label{fig:system}
-\end{figure}
+\end{figure*}
 
 The design has five blocks behind one host interface, shown in Fig.~\ref{fig:system}:
 \begin{itemize}
