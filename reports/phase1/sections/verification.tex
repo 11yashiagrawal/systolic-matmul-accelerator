@@ -78,9 +78,9 @@ Each self-checking testbench prints the following summary on success:
 \end{center}
 A successful test terminates with \verb|$finish|. A mismatch reports a
 failure and calls
-\verb|$fatal(1, ...)|, producing a nonzero simulator exit. Make also rejects
-a \texttt{FAIL} summary or a missing, correctly formatted \texttt{PASS}
-summary. Make retains compilation, lint and simulation logs in the
+\verb|$fatal(1, ...)|, producing a nonzero simulator exit. Make also fails
+if a log contains a \texttt{FAIL} summary or lacks a correctly formatted
+\texttt{PASS} summary. Make retains compilation, lint and simulation logs in the
 generated build directory. Repeated Make invocations rerun simulations even when
 compiled executables already exist. Generated vectors and VCDs remain
 uncommitted; selected logs, cycle counts and waveform captures in

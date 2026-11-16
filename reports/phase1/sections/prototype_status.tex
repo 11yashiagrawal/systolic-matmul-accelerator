@@ -25,7 +25,7 @@ Total & & 10{,}349/10{,}349 \\
 \end{tabular}
 \end{table}
 
-The end-to-end test drives the accelerator only through its host ports. It loads each of the 106 golden cases, runs it, and compares every element of $C$ with the golden model, so every result of every case matches. It also checks the handshake rules: writes during a run are ignored, back-to-back runs work, one matrix can be replaced on its own, $C$ stays readable until the next capture, and a reset during a run returns the accelerator to idle.
+The end-to-end test drives the accelerator only through its host ports. It loads each of the 106 golden cases, runs it, and compares every element of $C$ with the golden model; every element of every case matches. It also checks the handshake rules: writes during a run are ignored, back-to-back runs work, one matrix can be replaced on its own, $C$ stays readable until the next capture, and a reset during a run returns the accelerator to idle.
 
 \subsection{Measured Latency}
 For every case the testbench counts the cycles in which \texttt{busy} is high and reads \texttt{cycle\_count} when \texttt{done} rises. Both are 12 in all 106 runs, recorded in \path{results/phase1/cycle_counts.csv}: one \texttt{CLEAR} cycle, $T = 10$ compute cycles and one \texttt{CAPTURE} cycle, exactly as the timing contract predicts. Fig.~\ref{fig:array-wave} shows the computation inside the array on the known product: the operands enter along the skewed edges and the results fill in diagonal by diagonal, with PE $(3,3)$ finishing in the last compute step.
