@@ -22,6 +22,13 @@
 \usepackage{array}
 \usepackage{tikz}
 \usetikzlibrary{arrows.meta,positioning}
+% Load last: makes the repository and video URLs and the cross-references
+% clickable, and fills in the PDF's title and author fields.
+\usepackage[hidelinks]{hyperref}
+\hypersetup{
+  pdftitle={A Parameterized Output-Stationary Systolic Array for Fixed-Point Matrix Multiplication: Phase 1 Prototype},
+  pdfauthor={Gokul VKS, Milind Bansal, Isha Tomar, Yashi Agrawal, Mohammad Affan Anas},
+  pdfkeywords={systolic array, matrix multiplication, hardware accelerator, Verilog}}
 
 % Figures come from this folder and from the committed results.
 \graphicspath{{figures/}{../../results/phase1/waveforms/}{../../docs/architecture/png/}}
