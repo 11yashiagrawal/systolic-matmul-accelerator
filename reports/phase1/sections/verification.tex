@@ -8,17 +8,17 @@ arithmetic, forwarding, skew or control boundary.
 
 \subsection{Tool Flow}
 The synthesizable Verilog-2005 RTL first passes static checks with
-Verilator~\cite{verilatorguide}. The \texttt{make lint} target discovers all
+Verilator~\cite{verilator2026guide}. The \texttt{make lint} target discovers all
 RTL files and runs \texttt{--lint-only -Wall}, selecting each module as a
 top and using the Verilog-2005 language setting. Warnings fail the target;
 intentional unused signals have local waivers with explanations.
 
 The \texttt{make test} target generates golden vectors, compiles each
 \path{tb/tb_*.v} with Icarus Verilog using \texttt{-g2005 -Wall}, and runs
-the resulting executable with \texttt{vvp}~\cite{icarussimulation}.
+the resulting executable with \texttt{vvp}~\cite{icarus2026simulation}.
 Testbenches dump VCD waveforms into \path{build/}. GTKWave provides manual
 inspection of the operand wavefront, accumulator updates and controller
-transitions~\cite{gtkwavedocs}; saved layouts are in \path{sim/waves/}.
+transitions~\cite{gtkwave2026docs}; saved layouts are in \path{sim/waves/}.
 The \texttt{make waves} target reruns the top-level test and opens its VCD
 in the selected viewer. Waveform inspection supplements the automated
 comparisons. Synthesis, resource counts and maximum-frequency measurement
