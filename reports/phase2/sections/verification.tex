@@ -1,0 +1,102 @@
+% Verification methodology and toolchain (issue #20).
+
+\section{Verification Methodology}
+Verification checks both the values of $C=AB$ and the timing and handshake
+contract in \path{docs/spec.md}. Tests progress from individual modules to
+the array and the complete accelerator, so a failure can be traced to an
+arithmetic, forwarding, skew or control boundary.
+
+\subsection{Tool Flow}
+The synthesizable Verilog-2005 RTL first passes static checks with
+Verilator~\cite{verilator2026guide}. The \texttt{make lint} target discovers all
+RTL files and runs \texttt{--lint-only -Wall}, selecting each module as a
+top and using the Verilog-2005 language setting. Warnings fail the target;
+intentional unused signals have local waivers with explanations.
+
+The \texttt{make test} target generates golden vectors, compiles each
+\path{tb/tb_*.v} with Icarus Verilog using \texttt{-g2005 -Wall}, and runs
+the resulting executable with \texttt{vvp}~\cite{icarus2026simulation}.
+Testbenches dump VCD waveforms into \path{build/}. GTKWave provides manual
+inspection of the operand wavefront, accumulator updates and controller
+transitions~\cite{gtkwave2026docs}; saved layouts are in \path{sim/waves/}.
+The \texttt{make waves} target reruns the top-level test and opens its VCD
+in the selected viewer. Waveform inspection supplements the automated
+comparisons. Synthesis, resource counts and maximum-frequency measurement
+are Phase~2 work and are not part of this simulation flow.
+
+\subsection{Hierarchical Testbenches}
+The MAC test checks signed products, including $-128\times-128$ and
+$-128\times127$, an accumulation chain, reset, clear priority and holding
+with enable low. The PE test adds the one-enabled-cycle forwarding delay
+and checks that both forwarding registers hold and clear with the
+accumulator. Input-buffer tests compare every A and B lane at each step
+with the spec's skew table; output-buffer tests check parallel capture,
+holding the previous result and readout at every address.
+
+Controller tests check the state sequence, busy-state rejection of
+\texttt{start}, restart from \texttt{DONE}, mid-run reset and the exact
+compute and busy lengths for $N=3$ and $N=4$. Array tests drive skewed
+operands at the edges and check every PE's partial sum after each compute
+edge, as well as final results, stalls and restart. They exercise both
+array sizes, catching row/column indexing and fill/drain errors that a
+single final-result comparison could miss.
+
+The end-to-end test loads operands through the host ports and compares
+every output element with golden vectors. It also checks ignored writes
+while busy, back-to-back runs, replacing only one operand matrix,
+preservation of the previous $C$ until capture, and reset during a run.
+For each golden case it counts busy cycles and checks
+\texttt{cycle\_count}: both must equal $K+2N$, or 12 for $N=K=4$.
+The CSV in \path{results/phase1/cycle_counts.csv} records these measurements;
+its compute-cycle field is derived by subtracting the one CLEAR and one
+CAPTURE cycle. The controller tests check the compute interval directly
+against $T=K+2N-2$, which is 10 cycles at the default size.
+
+\subsection{Golden Results and Directed Cases}
+The Python reference in \path{model/golden_model.py} computes signed
+matrix products with NumPy integer arithmetic and checks operand and
+result ranges. A separate cycle-level model starts with zero forwarding
+registers and accumulators, applies the specified input skew, and advances
+operands one PE per cycle. The vector generator refuses to write its
+files unless this model agrees with the mathematical product after
+exactly $T$ steps. Expected results therefore come from the reference or
+hand-worked values, rather than recorded RTL output.
+
+The default vector set contains six directed cases---identity, zero,
+all ones, maximum negative operands, mixed signed extremes and a known
+product with $A=1,\ldots,16$ in row-major order and $B=A^{\mathsf T}$---plus
+100 random cases spanning the signed 8-bit range. The golden-vector seed
+is 1; array tests use seeds 1 and 2 for $N=4$ and $N=3$. Seeds are printed
+in simulation logs, and the vector manifest maps cases to file offsets.
+Separate Python self-tests check the reference, cycle model, hexadecimal
+encoding and generator against hand-worked results and the spec.
+
+\subsection{Failure Reporting and Reproduction}
+Each self-checking testbench prints the following summary on success:
+\begin{center}
+\small\verb|PASS tb_<module> <passed>/<total>|
+\end{center}
+A successful test terminates with \verb|$finish|. A mismatch reports a
+failure and calls
+\verb|$fatal(1, ...)|, producing a nonzero simulator exit. Make also fails
+if a log contains a \texttt{FAIL} summary or lacks a correctly formatted
+\texttt{PASS} summary. Make retains compilation, lint and simulation logs in the
+generated build directory. Repeated Make invocations rerun simulations even when
+compiled executables already exist. Generated vectors and VCDs remain
+uncommitted; selected logs, cycle counts and waveform captures in
+\path{results/phase1/} provide report evidence.
+
+\subsection{Continuous Integration and Scope}
+The GitHub Actions simulation workflow runs on every pull request and on
+pushes to \texttt{dev}. On Ubuntu~24.04 it selects Python~3.12, installs
+Icarus Verilog, Verilator and NumPy, then executes the same
+\texttt{make lint test} command used locally. Failed jobs upload available
+\path{build/*.log} files as diagnostic artifacts. The Python model
+self-tests, GUI viewer and report build are separate local checks; they
+are not steps in this workflow.
+
+All seven available RTL testbenches pass the current regression,
+including all 106 golden cases end to end. These checks establish the
+observed functional and cycle-level behavior for the exercised cases;
+they are not an exhaustive proof or a measurement of physical timing.
+Phase~2 synthesis will assess implementation resources and timing.
