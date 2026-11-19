@@ -1,4 +1,5 @@
-% Conclusion and Phase 2 plan (issue #5).
+% Conclusion (issue #5; final report #63).
+% Still the Phase 1 text: rewritten in #63 once the Phase 2 results are in.
 
-\section{Conclusion and Phase~2 Plan}
+\section{Conclusion}
 Phase~1 delivers a complete, parameterized output-stationary systolic array in synthesizable Verilog-2005, with input skew buffers, an output buffer, a controller and a simple host interface. The prototype meets its written timing contract. It computes all 106 golden products correctly, and every run takes 10 compute cycles and 12 cycles from \texttt{start} to \texttt{done}, which is 6.4 times fewer compute cycles than a single sequential MAC unit needs. All 10{,}349 testbench checks pass, and continuous integration reruns them on every pull request. Phase~2 will synthesize the design to measure its resources and clock frequency, build the sequential baseline in RTL so that the speed-up is measured rather than derived, and add tiling so that the array can multiply matrices larger than itself.

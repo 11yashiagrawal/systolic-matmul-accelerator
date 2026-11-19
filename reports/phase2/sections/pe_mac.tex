@@ -1,4 +1,4 @@
-% Proposed solution: processing element and MAC microarchitecture (issue #9).
+% Proposed solution: processing element and MAC microarchitecture (issue #9; final-report update in #67).
 
 \subsection{Processing Element and MAC Unit}
 Each processing element (PE) owns one output element $C[i][j]$. It holds a multiply-accumulate unit (MAC) and two forwarding registers. The MAC multiplies two signed 8-bit operands into a 16-bit product, sign-extends that product to a 32-bit accumulator, and adds it to the running sum in every enabled cycle. The product is formed at its natural width before the sign extension, so the sign bit is never read as zero. Clear has priority over enable, and reset behaves like clear.

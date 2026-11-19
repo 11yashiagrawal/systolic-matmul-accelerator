@@ -1,4 +1,4 @@
-% Proposed solution: controller FSM (issue #9).
+% Proposed solution: controller FSM (issue #9; final-report update in #67).
 
 \subsection{Controller}
 The controller sequences one matrix multiplication through five states, shown in Fig.~\ref{fig:fsm}. Its outputs are decoded from the state register, so they change only on clock edges. In \texttt{CLEAR} the accumulators and forwarding registers are zeroed. \texttt{COMPUTE} then runs for $T = K + 2N - 2$ cycles, which is 10 for $N = 4$: the last PE, $(N{-}1, N{-}1)$, adds its last product in step $T-1$. \texttt{CAPTURE} copies every accumulator into the output buffer, and \texttt{DONE} holds the result while \texttt{done} is high. A \texttt{start} pulse is accepted only in \texttt{IDLE} and \texttt{DONE} and is ignored while the array is busy. A full run keeps the controller busy for $K + 2N = 12$ cycles, and \texttt{cycle\_count} reports that number when the run ends.

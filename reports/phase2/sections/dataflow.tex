@@ -1,4 +1,4 @@
-% Proposed solution: output-stationary dataflow and input skewing (issue #13).
+% Proposed solution: output-stationary dataflow and input skewing (issue #13; final-report update in #71).
 
 \subsection{Dataflow and Input Skewing}
 The array is output-stationary: PE $(i,j)$ keeps $C[i][j]$ in its accumulator for the whole run, and only the operands move. Row $i$ of $A$ enters the left edge at PE $(i,0)$ and moves one PE to the right per cycle. Column $j$ of $B$ enters the top edge at PE $(0,j)$ and moves one PE down per cycle. Results never move during the computation, so the output buffer can copy all $N^2$ of them in one cycle when it ends.

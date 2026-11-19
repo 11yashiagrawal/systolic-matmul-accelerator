@@ -1,0 +1,83 @@
+% Final report (Phase 2, issue #63). Each section lives in sections/<name>.tex and is
+% written by its owner (see README.md and the section issues); this file only sets up
+% the template and the order, which follows the Phase 2 brief.
+% Build from this folder: `tectonic main.tex`, or pdflatex + bibtex (e.g. Overleaf).
+
+\documentclass[conference]{IEEEtran}
+
+\usepackage{iftex}
+\ifXeTeX
+  % Tectonic and xelatex: Times-like text to match pdflatex's IEEEtran output.
+  \usepackage{fontspec}
+  \defaultfontfeatures{Extension=.otf, UprightFont=*-regular, BoldFont=*-bold,
+    ItalicFont=*-italic, BoldItalicFont=*-bolditalic}
+  \setmainfont{texgyretermes}
+  \setsansfont{texgyreheros}
+  \setmonofont{texgyrecursor}
+\fi
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning}
+% Load last: makes the repository and video URLs and the cross-references
+% clickable, and fills in the PDF's title and author fields.
+\usepackage[hidelinks]{hyperref}
+\hypersetup{
+  pdftitle={A Parameterized Output-Stationary Systolic Array for Fixed-Point Matrix Multiplication: Final Design and Evaluation},
+  pdfauthor={Gokul VKS, Milind Bansal, Isha Tomar, Yashi Agrawal, Mohammad Affan Anas},
+  pdfkeywords={systolic array, matrix multiplication, tiling, hardware accelerator, FPGA synthesis, Verilog}}
+
+% Figures come from this folder, from the committed results and from the
+% architecture diagrams.
+\graphicspath{{figures/}{../../results/phase2/figures/}{../../results/phase2/waveforms/}{../../results/phase1/waveforms/}{../../docs/architecture/png/}}
+
+% Sections that other pull requests add are input only once they exist, so the
+% report builds at every step. Assembly (#63) replaces these with plain \input.
+\newcommand{\inputifexists}[1]{\IfFileExists{#1.tex}{\input{#1}}{}}
+
+\begin{document}
+
+\title{A Parameterized Output-Stationary Systolic Array\\
+for Fixed-Point Matrix Multiplication:\\
+Final Design and Evaluation}
+
+\author{\IEEEauthorblockN{Gokul VKS, Milind Bansal, Isha Tomar, Yashi Agrawal and Mohammad Affan Anas}
+\IEEEauthorblockA{Newton School of Technology, Rishihood University\\
+Code and results: \url{https://github.com/vks-g/systolic-matmul-accelerator}\\
+Phase~1 prototype video: \url{https://drive.google.com/drive/folders/1d-p1YpFjd7gjbm1XGEC8u5PCso8LQxUw}}}
+
+\maketitle
+
+\input{sections/abstract}
+
+\input{sections/introduction}
+\inputifexists{sections/literature_review}  % #74
+
+% Proposed Solution
+\input{sections/architecture_overview}
+\input{sections/pe_mac}                     % #67
+\input{sections/dataflow}                   % #71
+\input{sections/controller}                 % #67
+\input{sections/tiling}
+
+\input{sections/verification}               % #78
+
+% Results and Discussion
+\input{sections/results_discussion}
+\inputifexists{sections/results}            % #71
+\inputifexists{sections/baseline}           % #67
+\inputifexists{sections/synthesis}          % #78
+\inputifexists{sections/discussion}         % #63
+
+\input{sections/contributions}
+\input{sections/conclusion}
+
+\IfFileExists{refs.bib}{%
+  \bibliographystyle{IEEEtran}
+  \bibliography{refs}}{}
+
+\end{document}

@@ -1,4 +1,5 @@
-% Introduction (issue #5).
+% Introduction (issue #5; final report #63).
+% Still the Phase 1 text: rewritten in #63 once the Phase 2 results are in.
 
 \section{Introduction}
 Matrix multiplication is the core operation of fully connected and convolutional neural-network layers, of transformers, and of many filters and transforms in signal processing. Multiplying two $N \times N$ matrices takes $N^3$ multiply-accumulate (MAC) operations, and each operand is used $N$ times. A general-purpose processor fetches those operands again and again through its memory hierarchy, and the energy of that data movement exceeds the energy of the arithmetic by orders of magnitude~\cite{horowitz2014energy, sze2017efficient}. Dedicated hardware that keeps operands close to many parallel MAC units is therefore the standard way to accelerate this workload.
