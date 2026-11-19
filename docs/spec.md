@@ -106,12 +106,12 @@ flowchart LR
   end
   host -- "a_we, a_addr, a_wdata" --> abuf
   host -- "b_we, b_addr, b_wdata" --> bbuf
-  host -- start --> ctrl
+  host -- "start, k_len, accumulate" --> ctrl
   ctrl -- "busy, done, cycle_count" --> host
   abuf -- a_left --> arr
   bbuf -- b_top --> arr
-  ctrl -- "en, step" --> abuf
-  ctrl -- "en, step" --> bbuf
+  ctrl -- "en, step, run_k_len" --> abuf
+  ctrl -- "en, step, run_k_len" --> bbuf
   ctrl -- "clear, en" --> arr
   arr -- acc_flat --> obuf
   ctrl -- capture --> obuf
@@ -166,26 +166,30 @@ Inside: `a_in` of PE (i, j) is `a_out` of PE (i, j−1), and `b_in` of PE (i, j)
 
 ### 6.4 `input_skew_buffer` — `rtl/buffers/input_skew_buffer.v` (#10)
 
-Parameters: `N`, `DATA_W`, `COLUMN_LANES`. It stores one N×N matrix and feeds it into one edge of the array with the skew. The top level instantiates it twice: `COLUMN_LANES = 0` for A (lane l is row l) and `COLUMN_LANES = 1` for B (lane l is column l).
+Parameters: `N`, `K_MAX`, `DATA_W`, `COLUMN_LANES`. It stores one operand block and feeds it into one edge of the array with the skew. The top level instantiates it twice:
+
+- `COLUMN_LANES = 0` for A: N rows of `K_MAX` elements, and lane l is row l.
+- `COLUMN_LANES = 1` for B: `K_MAX` rows of N elements, and lane l is column l.
 
 | Port | Dir | W | Description |
 |---|---|---|---|
 | `clk`, `rst_n` | in | 1 | Clock; synchronous active-low reset (storage resets to 0) |
 | `we` | in | 1 | Write `wdata` at `waddr` this cycle |
-| `waddr` | in | `ADDR_W` | Row-major address: element (r, c) is at `r*N + c` |
+| `waddr` | in | `OP_ADDR_W` | Element address (section 8): `A[r][k]` at `r*K_MAX + k`, `B[k][c]` at `k*N + c` |
 | `wdata` | in | `DATA_W` s | Element value |
 | `en` | in | 1 | Feeding is active (the controller's COMPUTE state) |
 | `step` | in | `STEP_W` | Compute step `t`, from 0 to `T − 1` |
+| `k_len` | in | `K_LEN_W` | Inner length of the current run, from the controller's `run_k_len` |
 | `lanes` | out (comb) | `N*DATA_W` | Lane l at `[l*DATA_W +: DATA_W]` |
 
-Storage `M` is written at the rising edge when `we` is high: `M[waddr / N][waddr % N] <= wdata`. Each lane `l` is combinational in `step` and `M`:
+Storage `M` is written at the rising edge when `we` is high: `M[waddr / K_MAX][waddr % K_MAX] <= wdata` for A, and `M[waddr / N][waddr % N] <= wdata` for B. Writes at or above `N*K_MAX` are ignored. Each lane `l` is combinational in `step`, `k_len` and `M`:
 
 | Condition | `COLUMN_LANES = 0` (A) | `COLUMN_LANES = 1` (B) |
 |---|---|---|
-| `en` high and `0 <= t − l < K` | `M[l][t − l]` | `M[t − l][l]` |
+| `en` high and `0 <= t − l < k_len` | `M[l][t − l]` | `M[t − l][l]` |
 | otherwise | 0 | 0 |
 
-Compare `t >= l` before subtracting: `t − l` on unsigned values wraps around. An implementation built from shift registers is also fine, as long as the lanes match this table in every cycle.
+Elements with k ≥ `k_len` may hold old data or filler from an earlier run. The `k_len` bound keeps them out of the array, so the host never has to clear them. Compare `t >= l` before subtracting: `t − l` on unsigned values wraps around. An implementation built from shift registers is also fine, as long as the lanes match this table in every cycle.
 
 ### 6.5 `output_buffer` — `rtl/buffers/output_buffer.v` (#10)
 
@@ -199,21 +203,24 @@ Parameters: `N`, `ACC_W`.
 | `c_addr` | in | `ADDR_W` | Row-major address of the result to read |
 | `c_rdata` | out (comb) | `ACC_W` s | Result register at `c_addr` |
 
-At the rising edge with `capture` high, all N×N result registers load `acc_flat` at once. They hold until the next capture, so the previous C stays readable while the next multiplication runs.
+At the rising edge with `capture` high, all N×N result registers load `acc_flat` at once. They hold until the next capture, so the previous C stays readable while the next multiplication runs. An accumulate run captures the same way; the accumulators then hold the sum over every chunk so far.
 
 ### 6.6 `sa_controller` — `rtl/control/sa_controller.v` (#7)
 
-Parameters: `N`, `CYC_W`. Behaviour and timing are in section 7.
+Parameters: `N`, `K_MAX`, `CYC_W`. Behaviour and timing are in section 7.
 
 | Port | Dir | W | Description |
 |---|---|---|---|
 | `clk`, `rst_n` | in | 1 | Clock; synchronous active-low reset (to `IDLE`) |
-| `start` | in | 1 | Begin a multiplication; sampled in `IDLE` and `DONE` only |
+| `start` | in | 1 | Begin a run; sampled in `IDLE` and `DONE` only, and accepted only when 1 ≤ `k_len` ≤ `K_MAX` |
+| `k_len` | in | `K_LEN_W` | Inner length of the next run; sampled with `start` |
+| `accumulate` | in | 1 | Skip `CLEAR` and add onto the accumulators; sampled with `start` |
 | `busy` | out | 1 | High in `CLEAR`, `COMPUTE` and `CAPTURE` |
 | `done` | out | 1 | High in `DONE`: C is readable |
 | `clear` | out | 1 | High in `CLEAR`, to the array |
 | `en` | out | 1 | High in `COMPUTE`, to the array and both skew buffers |
-| `step` | out (reg) | `STEP_W` | Compute step, 0 to `T − 1` in `COMPUTE`; 0 elsewhere |
+| `step` | out (reg) | `STEP_W` | Compute step, 0 to `T − 1` in `COMPUTE`, with `T = run_k_len + 2N − 2`; 0 elsewhere |
+| `run_k_len` | out (reg) | `K_LEN_W` | `k_len` sampled at the last accepted `start`, to both skew buffers |
 | `capture` | out | 1 | High in `CAPTURE`, to the output buffer |
 | `cycle_count` | out (reg) | `CYC_W` | Cycles spent busy in the current or last run |
 
@@ -221,21 +228,23 @@ Parameters: `N`, `CYC_W`. Behaviour and timing are in section 7.
 
 ### 6.7 `systolic_top` — `rtl/top/systolic_top.v` (#4)
 
-Parameters: `N`, `DATA_W`, `ACC_W`, `CYC_W`. This is the matrix data interface the host sees.
+Parameters: `N`, `K_MAX`, `DATA_W`, `ACC_W`, `CYC_W`. This is the matrix data interface the host sees.
 
 | Port | Dir | W | Description |
 |---|---|---|---|
 | `clk`, `rst_n` | in | 1 | Clock; synchronous active-low reset |
-| `a_we`, `a_addr`, `a_wdata` | in | 1, `ADDR_W`, `DATA_W` s | Write one element of A (row-major) |
-| `b_we`, `b_addr`, `b_wdata` | in | 1, `ADDR_W`, `DATA_W` s | Write one element of B (row-major) |
-| `start` | in | 1 | Begin C = A × B |
+| `a_we`, `a_addr`, `a_wdata` | in | 1, `OP_ADDR_W`, `DATA_W` s | Write one element of A (section 8) |
+| `b_we`, `b_addr`, `b_wdata` | in | 1, `OP_ADDR_W`, `DATA_W` s | Write one element of B (section 8) |
+| `start` | in | 1 | Begin a run |
+| `k_len` | in | `K_LEN_W` | Inner length of the run, 1 to `K_MAX`; sampled with `start` |
+| `accumulate` | in | 1 | Add this run's products onto the previous C; sampled with `start` |
 | `busy` | out | 1 | A multiplication is running |
 | `done` | out | 1 | C is valid on the read port |
 | `c_addr` | in | `ADDR_W` | Row-major address of the element of C to read |
 | `c_rdata` | out (comb) | `ACC_W` s | `C[c_addr / N][c_addr % N]` |
 | `cycle_count` | out | `CYC_W` | Busy cycles of the last run |
 
-Wiring: each buffer's `we` is the host's write enable ANDed with `!busy`, so writes during a run are ignored and cannot corrupt the operands in flight. The controller's `en` and `step` go to both buffers, `clear` and `en` go to the array, and `capture` goes to the output buffer.
+Wiring: each buffer's `we` is the host's write enable ANDed with `!busy`, so writes during a run are ignored and cannot corrupt the operands in flight. The host's `k_len` and `accumulate` go to the controller. The controller's `en`, `step` and `run_k_len` go to both buffers, `clear` and `en` go to the array, and `capture` goes to the output buffer.
 
 ## 7. Timing
 
