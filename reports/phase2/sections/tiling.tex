@@ -1,0 +1,21 @@
+% Proposed solution: run-time inner length, accumulate runs and tiling (issue #63).
+% Follows docs/spec.md sections 7 and 12. The tiling figure from #76 goes here
+% once it is exported to docs/architecture/png/.
+
+\subsection{Tiling Products Larger than the Array}
+The array holds one $N \times N$ tile of $C$, and the operand buffers hold at most $K_{\max}$ elements of the inner dimension. A host multiplies an $M \times K$ matrix $A$ by a $K \times P$ matrix $B$ of any size by splitting the product into runs that fit:
+\begin{enumerate}
+\item It splits $C$ into $\lceil M/N \rceil \cdot \lceil P/N \rceil$ output tiles of $N \times N$ elements.
+\item It splits the inner dimension into $c = \lceil K/K_{\max} \rceil$ chunks. Every chunk has $K_{\max}$ elements except possibly the last.
+\item For each tile, it runs the chunks in order. Before each run it writes the $N \times k_{\mathrm{len}}$ block of $A$ and the $k_{\mathrm{len}} \times N$ block of $B$ for that tile and chunk. Rows of $A$ beyond $M$ and columns of $B$ beyond $P$ are written as zeros, because the buffers keep their old contents. The first chunk starts normally, and every later chunk starts with \texttt{accumulate} high.
+\item After the last chunk it reads the tile and keeps the rows below $M$ and the columns below $P$.
+\end{enumerate}
+
+The accumulate start is what makes this cheap. The dataflow is output-stationary, so the partial sums of a tile stay in their PEs between chunks: no partial sum leaves the array, and only the finished tile is read. Skipping the clear step is safe. In the last step of any run, every PE that feeds a neighbour holds operands with $k \geq k_{\mathrm{len}}$, which entered the array as zeros, so the forwarding registers are already empty when the next run starts. Only the accumulators carry over. The zero padding at the edges costs the same time as useful work, as it does on the TPU~\cite{jouppi2017tpu}.
+
+A tile of a product with $c$ chunks takes one normal run and $c - 1$ accumulate runs, so the array is busy for
+\begin{equation}
+\sum_{\text{chunks}} \left(k_{\mathrm{len}} + 2N\right) - (c - 1) = K + c\,(2N - 1) + 1
+\label{eq:tilebusy}
+\end{equation}
+cycles per tile. The sequential baseline, driven through the same ports and the same procedure, is busy for $N^2 K$ cycles per tile. In both designs, loading the operands takes $NK$ cycles per tile and reading the finished tile another $N^2$. For an $8 \times 8$ by $8 \times 8$ product on the default $4 \times 4$ array, the four tiles keep the array busy for 64 cycles against 512 for the baseline, a predicted speed-up of 8.0. Counting the loading, the start pulses and the readout, the totals are 260 and 708 cycles, a speed-up of only 2.7. Section~V compares these predictions with the measured cycle counts.
