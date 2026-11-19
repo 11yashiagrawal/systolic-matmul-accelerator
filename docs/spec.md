@@ -267,15 +267,19 @@ Number the `COMPUTE` cycles with the step `t = 0, 1, …, T − 1`. The skew buf
 a_in = A[i][t - i - j]      b_in = B[t - i - j][j]
 ```
 
-Both carry the same index `k = t − i − j`, so PE (i, j) adds the term `A[i][k] * B[k][j]` in step `t = i + j + k`. Outside `0 <= k < K` both operands are zero and the product adds nothing.
+Both carry the same index `k = t − i − j`, so PE (i, j) adds the term `A[i][k] * B[k][j]` in step `t = i + j + k`. Outside `0 <= k < k_len` both operands are zero and the product adds nothing.
 
-PE (i, j) is busy from step `i + j` to step `i + j + K − 1`. The last PE, (N−1, N−1), adds its last term in step `K + 2N − 3`, so `COMPUTE` lasts
+PE (i, j) is busy from step `i + j` to step `i + j + k_len − 1`. The last PE, (N−1, N−1), adds its last term in step `k_len + 2N − 3`, so `COMPUTE` lasts
 
 ```
-T = K + 2N - 2 cycles        (10 for N = K = 4)
+T = k_len + 2N - 2 cycles        (10 for N = k_len = 4, 22 for k_len = K_MAX = 16)
 ```
 
-### 7.2 Edge inputs for N = 4
+The controller computes `T` from the `k_len` it sampled at `start`, so each run can have a different length.
+
+**Why an accumulate run can skip `CLEAR`.** `CLEAR` zeroes the accumulators and the forwarding registers. An accumulate run wants the accumulators as they are, and its forwarding registers are already zero. In the last step of any run, PE (i, j) forwards the operands with `k = k_len + 2N − 3 − i − j`, which is at least `k_len`, so they are zero, for every PE except (N−1, N−1). That PE's outputs drive nothing. After reset, every register is zero anyway.
+
+### 7.2 Edge inputs for N = `k_len` = 4
 
 `Aik` means `A[i][k]`, and `·` means 0.
 
@@ -290,7 +294,7 @@ T = K + 2N - 2 cycles        (10 for N = K = 4)
 | 6 | · | · | · | A33 | · | · | · | B33 |
 | 7–9 | · | · | · | · | · | · | · | · |
 
-The edges go quiet after step 6, but the last operands are still moving through the array until step 9.
+The edges go quiet after step 6, but the last operands are still moving through the array until step 9. Any other `k_len` gives the same pattern: lane l carries `k = t − l` while `0 <= k < k_len`, so the edges go quiet after step `k_len + N − 2` and the array drains until step `k_len + 2N − 3`.
 
 The wavefront in step 3 shows which term `k` each PE is adding (`–` means the PE is idle):
 
@@ -306,25 +310,29 @@ The wavefront in step 3 shows which term `k` each PE is adding (`–` means the 
 ```mermaid
 stateDiagram-v2
   [*] --> IDLE
-  IDLE --> CLEAR: start
+  IDLE --> CLEAR: start, accumulate low
+  IDLE --> COMPUTE: start, accumulate high
   CLEAR --> COMPUTE
   COMPUTE --> COMPUTE: step != T-1
   COMPUTE --> CAPTURE: step == T-1
   CAPTURE --> DONE
-  DONE --> CLEAR: start
+  DONE --> CLEAR: start, accumulate low
+  DONE --> COMPUTE: start, accumulate high
 ```
+
+A `start` is **accepted** when it arrives in `IDLE` or `DONE` with 1 ≤ `k_len` ≤ `K_MAX`. On an accepted start, `run_k_len <= k_len`, and that run's `T` is `run_k_len + 2N − 2`. A `start` with `k_len` = 0 or above `K_MAX` is ignored: the state, `run_k_len` and `cycle_count` do not change, and `busy` stays low, which the host can see.
 
 | State | Outputs high | Next state | `step` at the edge | `cycle_count` at the edge |
 |---|---|---|---|---|
-| `IDLE` | none | `CLEAR` if `start`, else `IDLE` | 0 | 0 if `start`, else hold |
+| `IDLE` | none | On an accepted `start`: `CLEAR` if `accumulate` is low, `COMPUTE` if it is high. Otherwise `IDLE` | 0 | 0 on an accepted `start`, else hold |
 | `CLEAR` | `busy`, `clear` | `COMPUTE` | 0 | +1 |
 | `COMPUTE` | `busy`, `en` | `CAPTURE` if `step == T − 1`, else `COMPUTE` | +1, or 0 when leaving | +1 |
 | `CAPTURE` | `busy`, `capture` | `DONE` | 0 | +1 |
-| `DONE` | `done` | `CLEAR` if `start`, else `DONE` | 0 | 0 if `start`, else hold |
+| `DONE` | `done` | As in `IDLE`, staying in `DONE` without an accepted `start` | 0 | As in `IDLE` |
 
 `CLEAR` takes one cycle, so the accumulators and forwarding registers are zero before step 0. `CAPTURE` takes one cycle, because the last product lands in the accumulators at the end of step `T − 1` and can be copied only at the next edge. The state encoding is up to the implementer.
 
-### 7.4 One run, cycle by cycle (N = 4)
+### 7.4 One run, cycle by cycle (N = `k_len` = 4)
 
 Cycle c0 is the cycle in which the host holds `start` high.
 
@@ -338,14 +346,31 @@ Cycle c0 is the cycle in which the host holds `start` high.
 | c12 | `CAPTURE` | 1 | 0 | 0 | 0 | 0 | 1 | 11 | output buffer loads all accumulators |
 | c13 | `DONE` | 0 | 1 | 0 | 0 | 0 | 0 | 12 | C is readable |
 
-In general `busy` is high for `T + 2 = K + 2N` cycles (12 for N = 4), and `cycle_count` holds that number in `DONE`. Of those cycles, `T` are compute cycles with `en` high.
+In general a normal run keeps `busy` high for `T + 2 = k_len + 2N` cycles (12 for N = `k_len` = 4), and `cycle_count` holds that number in `DONE`. Of those cycles, `T` are compute cycles with `en` high.
 
 ### 7.5 Handshake rules
 
 - `start` is a one-cycle pulse. It is sampled only in `IDLE` and `DONE` and ignored while `busy` is high. If it is still high when the controller reaches `DONE`, a new run starts at once, so drop it after one cycle.
-- Writes to A and B are accepted only while `busy` is low; the top level ignores them during a run. A and B keep their contents between runs, so a host can replace just one matrix before the next `start`.
-- C is valid while `done` is high. It stays readable after the next `start`, until that run's `CAPTURE` cycle replaces it.
-- `rst_n` low at a rising edge returns the controller to `IDLE` and zeroes A, B, the accumulators, the results and `cycle_count`. After reset, every address of C reads 0.
+- `k_len` and `accumulate` are sampled in the cycle a `start` is accepted. Changing them during a run has no effect. A `start` with `k_len` outside 1 to `K_MAX` is ignored (7.3).
+- With `accumulate` low, a run starts with `CLEAR` and computes C = A × B for its operands. With `accumulate` high, it skips `CLEAR` and adds A × B onto the accumulators, which hold the C of the last completed run (zero after reset).
+- Writes to A and B are accepted only while `busy` is low; the top level ignores them during a run. A and B keep their contents between runs, so a host can replace just one operand before the next `start`, for example keep A and load a new B.
+- C is valid while `done` is high. It stays readable after the next `start`, until that run's `CAPTURE` cycle replaces it. (The baseline differs here; see 6.8.)
+- `rst_n` low at a rising edge returns the controller to `IDLE` and zeroes A, B, the accumulators, the results, `run_k_len` and `cycle_count`. After reset, every address of C reads 0.
+
+### 7.6 An accumulate run, cycle by cycle (N = `k_len` = 4)
+
+The previous run has finished, so the controller is in `DONE`, and the host holds `start` high with `accumulate` high in cycle c0.
+
+| Cycle | State | `busy` | `done` | `clear` | `en` | `step` | `capture` | `cycle_count` | At the end of the cycle |
+|---|---|---|---|---|---|---|---|---|---|
+| c0 | `DONE` | 0 | 1 | 0 | 0 | 0 | 0 | old value | `start` accepted, `cycle_count <= 0` |
+| c1 | `COMPUTE` | 1 | 0 | 0 | 1 | 0 | 0 | 0 | PE (0, 0) adds A00·B00 onto its old sum |
+| c2 – c9 | `COMPUTE` | 1 | 0 | 0 | 1 | 1 – 8 | 0 | 1 – 8 | the wavefront moves across the array |
+| c10 | `COMPUTE` | 1 | 0 | 0 | 1 | 9 | 0 | 9 | PE (3, 3) adds A33·B33 |
+| c11 | `CAPTURE` | 1 | 0 | 0 | 0 | 0 | 1 | 10 | output buffer loads the new sums |
+| c12 | `DONE` | 0 | 1 | 0 | 0 | 0 | 0 | 11 | C = old C + A × B is readable |
+
+An accumulate run keeps `busy` high for `T + 1 = k_len + 2N − 1` cycles (11 here), one fewer than a normal run. The old C stays readable until c11.
 
 ## 8. Address map
 
