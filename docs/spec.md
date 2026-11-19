@@ -493,26 +493,108 @@ On any failure the testbench also calls `$fatal(1, ...)`, so the simulator exits
 
 ## 11. Performance model
 
-| Metric | Formula | N = K = 4 |
+### 11.1 One run
+
+| Metric | Formula | N = 4, `k_len` = 4 | N = 4, `k_len` = 16 |
+|---|---|---|---|
+| Compute cycles `T` | `k_len + 2N − 2` | 10 | 22 |
+| Busy cycles, normal run | `k_len + 2N` | 12 | 24 |
+| Busy cycles, accumulate run | `k_len + 2N − 1` | 11 | 23 |
+| Multiply-accumulates in the run | `N²·k_len` | 64 | 256 |
+| Peak multiply-accumulates per cycle | `N²` | 16 | 16 |
+| PE utilization during compute | `N²·k_len / (N²·T) = k_len / T` | 40% | 72.7% |
+| Baseline busy cycles (6.8) | `N²·k_len` | 64 | 256 |
+| Speed-up over the baseline, compute only | `N²·k_len / T` | 6.4× | 11.6× |
+| Speed-up over the baseline, busy cycles | `N²·k_len / (k_len + 2N)` | 5.3× | 10.7× |
+| Loading A and B (section 8) | `N·k_len` | 16 | 64 |
+
+Utilization is 40% at `k_len` = 4 because the wavefront takes 2N − 2 cycles to fill and drain the array. Fill and drain are paid once per run, so utilization and the speed-up grow with `k_len`, towards 100% and N² = 16.
+
+### 11.2 A whole product
+
+For C = A·B with A of size M×K and B of size K×P, tiled as in section 12:
+
+```
+tiles  = ceil(M/N) * ceil(P/N)
+chunks = ceil(K/K_MAX)            runs = tiles * chunks
+```
+
+| Per tile | Array | Baseline |
 |---|---|---|
-| Compute cycles `T` | `K + 2N − 2` | 10 |
-| Busy cycles, `start` to `done` | `K + 2N` | 12 |
-| Multiply-accumulates per product | `N²K` | 64 |
-| Peak multiply-accumulates per cycle | `N²` | 16 |
-| PE utilization during compute | `N²K / (N²T) = K / T` | 40% |
-| Single sequential MAC (baseline) | `N²K` cycles | 64 |
-| Speed-up over the baseline, compute only | `N²K / T` | 6.4× |
-| Speed-up over the baseline, busy cycles | `N²K / (K + 2N)` | 5.3× |
+| Busy cycles | `K + chunks·(2N − 1) + 1` | `N²·K` |
+| Host cycles with the reference schedule (load + start + busy + read) | `(N + 1)·K + 2N·chunks + 1 + N²` | `N·K + chunks + N²·K + N²` |
 
-Utilization is 40% because the wavefront takes 2N − 2 cycles to fill and drain the array; it approaches 100% as K grows. Loading A and B takes 16 cycles and reading C takes another 16, so one complete product, including I/O, takes about 16 + 12 + 16 = 44 cycles. The narrow one-element ports, not the array, limit end-to-end throughput, which is one of the Phase 2 topics below.
+Multiply by `tiles` for the whole product. The array's busy cycles are one normal run of `k_len + 2N` plus `chunks − 1` accumulate runs of `k_len + 2N − 1`, summed over the chunks.
 
-The prototype must reproduce the first two rows exactly in simulation (#7, #11). The rest are derived from them and from the baseline formula. Phase 2 measures the baseline in RTL.
+Examples for N = 4 and `K_MAX` = 16:
 
-## 12. Phase 2 extensions
+| Product | Tiles × chunks | Array busy | Baseline busy | Busy speed-up | Array host cycles | Baseline host cycles | Host speed-up |
+|---|---|---|---|---|---|---|---|
+| 4 × 4 × 4 | 1 × 1 | 12 | 64 | 5.3× | 45 | 97 | 2.2× |
+| 8 × 8 × 8 | 4 × 1 | 64 | 512 | 8.0× | 260 | 708 | 2.7× |
+| 4 × 40 × 4 | 1 × 3 | 62 | 640 | 10.3× | 241 | 819 | 3.4× |
 
-None of this binds Phase 1. It is recorded here so Phase 1 choices do not block it.
+### 11.3 What the model predicts
 
-- A single-MAC sequential baseline, `rtl/baseline/seq_matmul.v`, with the same host interface as `systolic_top`, for a measured speed-up.
-- Synthesis with Yosys, and with Vivado if available: LUTs, flip-flops, DSP blocks and maximum frequency. The combinational skew lanes feed the multipliers directly, so the critical path probably runs from `step` through the lane multiplexer, the multiplier and the adder. Registering the lanes adds one cycle to `T`.
-- K ≠ N and tiling for matrices larger than the array; overlapping load, compute and readout with double-buffered A, B and C.
-- Rounding and saturating results back to `DATA_W` bits for a fixed-point output.
+- The array is fastest relative to the baseline on long inner dimensions, where fill and drain are a small part of each run.
+- End to end, loading dominates. A run needs N·`k_len` cycles to load its operands through one-element ports but only `k_len + 2N` to compute, so the host speed-up stays far below the busy speed-up. Wider or double-buffered ports would fix this; they are out of scope (section 15), and the results (#71) should quantify the gap.
+- A larger `K_MAX` means fewer chunks and higher utilization, at the cost of N·`K_MAX`·`DATA_W` bits of storage for each operand.
+
+The RTL must reproduce the per-run cycle counts exactly in simulation (#65, #69, #64), and the performance model (#73) must match every measured run. Phase 1's estimate of about 44 cycles for one 4×4 product with I/O is 45 in this model, which also counts the `start` cycle.
+
+## 12. Tiling products larger than the array
+
+The hardware computes one N×N tile of C per run, over an inner length of at most `K_MAX`. A host computes C = A·B for any A of size M×K and B of size K×P like this:
+
+1. Split C into `ceil(M/N) × ceil(P/N)` output tiles. Tile (ti, tj) covers rows `ti·N` to `ti·N + N − 1` and columns `tj·N` to `tj·N + N − 1` of C.
+2. Split the inner dimension into `ceil(K/K_MAX)` chunks. Chunk c covers k = `c·K_MAX` to `c·K_MAX + k_len_c − 1`, with `k_len_c = min(K_MAX, K − c·K_MAX)`. Every chunk is full except possibly the last.
+3. For each tile, for each chunk c in order:
+   - Write the N×`k_len_c` block of A (the tile's rows, the chunk's columns) and the `k_len_c`×N block of B (the chunk's rows, the tile's columns), at the addresses of section 8 relative to the block.
+   - Write rows of A beyond M and columns of B beyond P as 0. This is the zero padding; it must be written, because the stores keep old values.
+   - Pulse `start` with `k_len = k_len_c`, and `accumulate` low for chunk 0 and high for every later chunk.
+   - Wait for `done`.
+4. After the last chunk, read the N×N tile of C and keep the rows below M and the columns below P.
+
+The accumulate start keeps each tile's partial sums in the PEs between chunks, so no partial sum leaves the array and only the finished tile is read. Padding costs the same time as real work. The baseline runs the same procedure through the same ports.
+
+**Reference host schedule.** The performance model (11.2) and the measured cycle counts (#69) use this schedule:
+
+1. Each run writes its A and B blocks in parallel, one element of each per cycle, in N·`k_len` cycles.
+2. It then pulses `start` for one cycle and waits through the busy cycles.
+3. The next run's writes start in the first `DONE` cycle.
+4. After a tile's last chunk, the host reads C one element per cycle, starting in the first `DONE` cycle.
+
+A host may do better, for example by keeping A when only B changes, or by loading the next tile's operands while it reads C. Report such schedules separately from the reference numbers.
+
+## 13. Synthesis targets and metrics
+
+Phase 2 reports resources and maximum frequency from a fully open-source flow (#75). No board is available, so the design is synthesized, placed and routed, but not run on hardware.
+
+- **Device.** Lattice ECP5 LFE5U-25F, speed grade 6, 256-ball caBGA package (`nextpnr-ecp5 --25k --package CABGA256 --speed 6`). It has 24K LUT4s and 28 MULT18X18D multiplier blocks.
+- **Flow.** Yosys `synth_ecp5 -top <module>`, then `nextpnr-ecp5` with a 100 MHz target on `clk` and `--seed 1`, so every number is reproducible. No pins are constrained; nextpnr places the I/O. At N = 4 the top level has 109 pins.
+- **Designs.** `systolic_top` for N = 2, 3 and 4, and `seq_matmul` at N = 4, all with the default `DATA_W`, `ACC_W`, `K_MAX` and `CYC_W`. N = 8 needs 64 multipliers, more than the 28 blocks, so try it with the extra multipliers in LUTs and report it only if it fits.
+- **Metrics.** One row per design in `results/phase2/synth/summary.csv`: LUT4s, flip-flops, MULT18X18D blocks and block RAMs used, from the nextpnr utilization report, and the post-route Fmax of `clk`.
+- **Throughput.** Peak multiply-accumulates per second are N²·Fmax for the array and Fmax for the baseline. The effective rate of a run is `N²·k_len / (k_len + 2N)`·Fmax. The results (#71) compare both designs per second and per LUT, not only per cycle.
+- **Critical path.** The skew lanes are combinational, so the longest path probably runs from `step` or `run_k_len` through the lane multiplexer, the multiplier and the adder into the accumulator. Report the path nextpnr prints (#78). Registering the lanes would shorten it at the cost of one more cycle per run; that is out of scope unless the results justify it.
+
+## 14. Phase 2 build order
+
+`dev` must lint and pass every testbench after each merge, so the changes land in this order:
+
+1. **This spec (#60).** It adds `SA_K_MAX` to `sa_params.vh` and changes no RTL.
+2. **Controller (#65) and skew buffers (#68), in parallel.** Each PR also updates its instance in `systolic_top` so the top level keeps its Phase 1 behaviour and `tb_systolic_top` passes unchanged:
+   - Pass `K_MAX = N`.
+   - Tie the controller's `k_len` to N and its `accumulate` to 0.
+   - Drive the buffers' `k_len` from the controller's `run_k_len` once both are in, and tie it to N until then.
+   - Keep `make lint` clean.
+3. **Top level (#62).** It adds the `k_len` and `accumulate` ports, uses the default `K_MAX`, and moves `tb_systolic_top`'s A writes to the new address map with `k_len` = N.
+4. **End-to-end tests (#69), array checks (#61) and the demo (#70)** follow, on top of #62 and the vector sets from #72.
+
+The baseline (#64), the golden model (#72) and the synthesis flow (#75) do not depend on this order. The baseline is standalone, the vectors need only sections 8 and 9, and synthesis runs on whatever `dev` holds.
+
+## 15. Out of scope
+
+- Rounding and saturating results back to `DATA_W` bits.
+- Double-buffered or wider A, B and C ports that overlap loading, computing and reading.
+- Registered skew lanes, unless the synthesis results justify them (section 13).
+- Running on an FPGA board, since none is available, and vendor tools such as Vivado.
