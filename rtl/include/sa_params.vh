@@ -11,15 +11,21 @@
 `ifndef SA_PARAMS_VH
 `define SA_PARAMS_VH
 
-// Array is N x N processing elements. Phase 1 multiplies N x N by N x N matrices,
-// so the inner dimension K equals N.
+// Array is N x N processing elements; C is computed in N x N tiles.
 `define SA_N        4
+
+// Largest inner length of one run (Phase 2, issue #60). A run multiplies an
+// N x k_len block of A by a k_len x N block of B, with 1 <= k_len <= K_MAX, and
+// longer products run as chunks with accumulate starts (docs/spec.md section 12).
+// K_MAX = N gives the Phase 1 address map.
+`define SA_K_MAX    16
 
 // Operand width: signed two's complement.
 `define SA_DATA_W   8
 
-// Accumulator width: signed two's complement. Needs at least
-// 2*DATA_W + clog2(K) = 18 bits for N = 4; 32 leaves room for larger arrays.
+// Accumulator width: signed two's complement. Needs at least 2*DATA_W + clog2(K)
+// bits for a total inner dimension K across all chunks (18 bits for K = 4);
+// 32 bits holds any K below 131,072.
 `define SA_ACC_W    32
 
 // Fractional bits of the fixed-point (Q) reading of operands. Interpretation
