@@ -58,6 +58,9 @@ module tb_seq_matmul;
     reg [ACC_W-1:0]  c_mem [0:MAX_CASES*NN-1];
     integer          n_cases;
 
+    // Expected C for the handshake checks, set from a case or worked by hand.
+    reg signed [ACC_W-1:0] exp_c [0:NN-1];
+
     integer n_checks = 0;
     integer n_fail   = 0;
 
@@ -108,9 +111,23 @@ module tb_seq_matmul;
         end
     endtask
 
+    // Write zero to every address of B, leaving A as it is.
+    task load_b_zero;
+        integer addr;
+        begin
+            for (addr = 0; addr < NN; addr = addr + 1) begin
+                b_we = 1'b1; b_addr = addr; b_wdata = 0;
+                tick;
+            end
+            b_we = 1'b0;
+        end
+    endtask
+
     // Pulse start for one cycle and wait for done, counting the cycles busy is high.
+    // With write_during_run set, the testbench also writes other values to A and B
+    // in every busy cycle; the baseline must ignore them (spec 7.5).
     integer busy_cycles;
-    task run_once;
+    task run_once(input integer write_during_run);
         integer guard;
         begin
             start = 1'b1;
@@ -119,11 +136,18 @@ module tb_seq_matmul;
             busy_cycles = 0;
             guard = 0;
             while (done !== 1'b1 && guard < 2*BUSY) begin
-                if (busy === 1'b1)
+                if (busy === 1'b1) begin
                     busy_cycles = busy_cycles + 1;
+                    if (write_during_run) begin
+                        a_we = 1'b1; a_addr = guard % NN;       a_wdata = 127 - guard;
+                        b_we = 1'b1; b_addr = (guard + 5) % NN; b_wdata = guard - 100;
+                    end
+                end
                 tick;
                 guard = guard + 1;
             end
+            a_we = 1'b0;
+            b_we = 1'b0;
             check(done === 1'b1, "done never rose", guard, BUSY);
             check(busy_cycles == BUSY, "busy cycles", busy_cycles, BUSY);
             check(cycle_count == BUSY, "cycle_count", cycle_count, BUSY);
@@ -144,6 +168,34 @@ module tb_seq_matmul;
                                  c, addr / N, addr % N, c_rdata, $signed(c_mem[c*NN + addr]));
                     n_fail = n_fail + 1;
                 end
+                tick;
+            end
+        end
+    endtask
+
+    task expect_zero;
+        integer addr;
+        begin
+            for (addr = 0; addr < NN; addr = addr + 1)
+                exp_c[addr] = 0;
+        end
+    endtask
+
+    task expect_case(input integer c);
+        integer addr;
+        begin
+            for (addr = 0; addr < NN; addr = addr + 1)
+                exp_c[addr] = $signed(c_mem[c*NN + addr]);
+        end
+    endtask
+
+    task check_c_exp(input [8*24-1:0] what);
+        integer addr;
+        begin
+            for (addr = 0; addr < NN; addr = addr + 1) begin
+                c_addr = addr;
+                #0.1;
+                check(c_rdata === exp_c[addr], what, c_rdata, exp_c[addr]);
                 tick;
             end
         end
@@ -220,7 +272,7 @@ module tb_seq_matmul;
         $fdisplay(csv, "case,name,busy_cycles,cycle_count,expected_busy");
         for (vc = 0; vc < n_cases; vc = vc + 1) begin
             load_case(vc);
-            run_once;
+            run_once(0);
             check_c(vc);
             $fdisplay(csv, "%0d,%0s,%0d,%0d,%0d", vc, case_name[vc], busy_cycles,
                       cycle_count, BUSY);
@@ -228,6 +280,56 @@ module tb_seq_matmul;
         $fclose(csv);
         $display("cases: %0d run, every element of C compared; cycle counts in results/phase2/baseline_cycles.csv",
                  n_cases);
+
+        // Writes during a run are ignored (spec 7.5): load the known case, write
+        // other values to A and B in every busy cycle, and C must still be the
+        // known product.
+        load_case(5);
+        expect_case(5);
+        run_once(1);
+        check_c_exp("C after writes in run");
+
+        // Back-to-back runs: start again from DONE without reloading. A and B keep
+        // their contents and the writes above were not taken, so C is the same.
+        run_once(0);
+        check_c_exp("C back-to-back run");
+        run_once(0);
+        check_c_exp("C third run");
+        $display("handshake: writes during a run ignored, back-to-back runs checked");
+
+        // Replace one matrix: after the identity case (C = A), write zeros to B
+        // only. The next run gives C = 0 (A x 0, worked by hand).
+        load_case(0);
+        expect_case(0);
+        run_once(0);
+        check_c_exp("C identity case");
+        load_b_zero;
+        run_once(0);
+        expect_zero;
+        check_c_exp("C after B replaced");
+
+        // Reset in the middle of a run (spec 7.5): with the known product in C,
+        // start a run and pull rst_n low for one edge after five busy cycles.
+        load_case(5);
+        expect_case(5);
+        run_once(0);
+        check_c_exp("C before reset");
+        start = 1'b1;
+        tick;
+        start = 1'b0;
+        repeat (5) tick;
+        rst_n = 1'b0;
+        tick;
+        check(cycle_count === 0, "mid-run reset cycle_count", cycle_count, 0);
+        check(busy === 1'b0 && done === 1'b0, "mid-run reset busy/done", {busy, done}, 0);
+        check_c_zero("C after mid-run reset");
+        rst_n = 1'b1;
+        tick;
+        // Reset zeroed A and B as well, so a run with no new writes gives C = 0.
+        expect_zero;
+        run_once(0);
+        check_c_exp("C run after reset");
+        $display("handshake: one matrix replaced, reset mid-run checked");
 
         if (n_fail == 0) begin
             $display("PASS tb_seq_matmul %0d/%0d", n_checks, n_checks);
