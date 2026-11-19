@@ -1,18 +1,18 @@
 # Architecture spec and interface contract
 
-This document is the contract every module is built and tested against (issue #2). Port names, widths, timing and the handshake defined here are fixed. To change any of them, open a PR against this file first and tag the owners of the affected modules.
+This document is the contract every module is built and tested against (issue #2). Version 2 (issue #60) adds a run-time inner length, accumulate runs, tiling of larger products, the sequential baseline and the synthesis targets for Phase 2. Port names, widths, timing and the handshake defined here are fixed. To change any of them, open a PR against this file first and tag the owners of the affected modules.
 
 ## 1. What the accelerator does
 
-It computes **C = A × B** for signed fixed-point matrices, with A and B both N×N and N = 4 by default:
+One run computes **C = A × B** for signed fixed-point matrices, with A of size N×`k_len` and B of size `k_len`×N. N is 4 by default, and the inner length `k_len` is chosen for each run, from 1 to `K_MAX` (16 by default):
 
 ```
-C[i][j] = sum over k = 0 .. K-1 of  A[i][k] * B[k][j]
+C[i][j] = sum over k = 0 .. k_len-1 of  A[i][k] * B[k][j]
 ```
 
-In Phase 1 the inner dimension K equals N. The formulas below keep K separate so they still hold when Phase 2 relaxes that.
+An **accumulate** run adds its products onto the C of the previous run instead of starting from zero. With it, a host can multiply matrices of any size: it splits C into N×N tiles and the inner dimension into chunks of at most `K_MAX`, and runs one chunk at a time (section 12). Phase 1 fixed `k_len` at N; that case behaves exactly as before.
 
-A host (the testbench in Phase 1) loads A and B through two write ports, pulses `start`, waits for `done`, and reads C through a read port.
+A host (a testbench or the demo) loads A and B through two write ports, sets `k_len` and `accumulate`, pulses `start`, waits for `done`, and reads C through a read port. The sequential baseline `seq_matmul` (6.8) has the same ports, so the same host drives both designs.
 
 ## 2. Dataflow: output-stationary
 
@@ -45,25 +45,29 @@ Defaults live in [`rtl/include/sa_params.vh`](../rtl/include/sa_params.vh). Each
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `N` | 4 | Array is N×N PEs; matrices are N×N |
+| `N` | 4 | Array is N×N PEs; C is computed in N×N tiles. N ≥ 2 |
+| `K_MAX` | 16 | Largest inner length of one run; A is stored as N×`K_MAX` and B as `K_MAX`×N. `K_MAX` ≥ N |
 | `DATA_W` | 8 | Operand width, signed two's complement |
 | `ACC_W` | 32 | Accumulator and result width, signed two's complement |
 | `FRAC_W` | 0 | Fractional bits in the fixed-point reading of operands (interpretation only) |
 | `CYC_W` | 32 | Width of `cycle_count` |
 
-| Derived (localparam) | Formula | N = 4 |
-|---|---|---|
-| `K` | `N` | 4 |
-| `T` (compute cycles) | `K + 2*N - 2` | 10 |
-| `ADDR_W` | `$clog2(N*N)` | 4 |
-| `STEP_W` | `$clog2(K + 2*N - 2)` | 4 |
+| Derived (localparam) | Formula | N = 4, `K_MAX` = 16 | Phase 1 (`K_MAX` = N = 4) |
+|---|---|---|---|
+| `T_MAX` (compute cycles of the longest run) | `K_MAX + 2*N - 2` | 22 | 10 |
+| `STEP_W` | `$clog2(T_MAX)` | 5 | 4 |
+| `K_LEN_W` | `$clog2(K_MAX + 1)` | 5 | 3 |
+| `OP_ADDR_W` (A and B ports) | `$clog2(N*K_MAX)` | 6 | 4 |
+| `ADDR_W` (C port) | `$clog2(N*N)` | 4 | 4 |
+
+The compute length of a run, `T = k_len + 2N − 2`, is no longer a parameter: the controller computes it from the `k_len` it samples at `start` (section 7). With `K_MAX` = N, `k_len` = N and `accumulate` low, every address and cycle count is the Phase 1 one.
 
 ## 4. Number format
 
 - **Operands** are `DATA_W`-bit signed integers, from −128 to 127 for the default.
 - **Products** are `2*DATA_W` bits wide and are sign-extended to `ACC_W` before they are added.
-- **Accumulators** are `ACC_W`-bit signed. The largest possible magnitude is `K * 2^(2*DATA_W - 2)`, reached when every operand is −128: for K = 4 that is 65,536, which needs 18 bits. With `ACC_W = 32`, overflow cannot happen for any K below 131,072, so the RTL does not saturate.
-- **Fixed-point reading.** With `FRAC_W = f`, an operand's bit pattern `x` means `x / 2^f` (format Q(`DATA_W` − 1 − f).f). A result `C` then has `2f` fractional bits and means `C / 2^(2f)`. To return it to the operands' format, shift it right arithmetically by f. Phase 1 reads every result at full precision, so f = 0 and the reference model compares plain integers. Rounding and saturating back to `DATA_W` bits is Phase 2 work.
+- **Accumulators** are `ACC_W`-bit signed. The largest possible magnitude is `K * 2^(2*DATA_W - 2)`, reached when every operand is −128, where K is the whole inner dimension of the product, across all its chunks: for K = 4 that is 65,536, which needs 18 bits. With `ACC_W = 32`, overflow cannot happen for any K below 131,072, so the RTL does not saturate.
+- **Fixed-point reading.** With `FRAC_W = f`, an operand's bit pattern `x` means `x / 2^f` (format Q(`DATA_W` − 1 − f).f). A result `C` then has `2f` fractional bits and means `C / 2^(2f)`. To return it to the operands' format, shift it right arithmetically by f. Phase 1 reads every result at full precision, so f = 0 and the reference model compares plain integers. Rounding and saturating back to `DATA_W` bits is out of scope (section 15).
 
 ### Signed arithmetic pitfalls
 
