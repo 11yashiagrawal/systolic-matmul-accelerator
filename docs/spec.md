@@ -374,19 +374,21 @@ An accumulate run keeps `busy` high for `T + 1 = k_len + 2N − 1` cycles (11 he
 
 ## 8. Address map
 
-All three matrices use row-major addresses on their own ports.
+Each matrix has its own port and row-major addresses. A is stored as N rows of `K_MAX` elements and B as `K_MAX` rows of N elements, so a run of any `k_len` uses the first `k_len` columns of A and the first `k_len` rows of B.
 
-| Port | Element | Address | N = 4 example |
+| Port | Element | Address | Example (N = 4, `K_MAX` = 16) |
 |---|---|---|---|
-| `a_addr` | `A[r][c]` | `r*N + c` | `A[2][1]` is at 9 |
-| `b_addr` | `B[r][c]` | `r*N + c` | `B[0][3]` is at 3 |
+| `a_addr` | `A[r][k]`, r < N, k < `K_MAX` | `r*K_MAX + k` | `A[2][1]` is at 33 |
+| `b_addr` | `B[k][c]`, k < `K_MAX`, c < N | `k*N + c` | `B[5][3]` is at 23 |
 | `c_addr` | `C[r][c]` | `r*N + c` | `C[3][3]` is at 15 |
 
-The A and B ports are independent, so both matrices load together in N² = 16 cycles. C is read one element per cycle, also in 16 cycles.
+Writes to A or B at or above `N*K_MAX` are ignored, and C addresses at or above N² read 0. Elements with k ≥ `k_len` are never used, so a host loads only the N·`k_len` elements of A and of B that a run needs. The A and B ports are independent, so both blocks load together in N·`k_len` cycles (16 for `k_len` = 4, 64 for `k_len` = 16). C is read one element per cycle, in N² = 16 cycles. With `K_MAX` = N the map is the Phase 1 one.
 
 ## 9. Golden test vectors
 
-`model/gen_vectors.py` (#14) writes the vectors and `tb/tb_systolic_top.v` (#11) reads them with `$readmemh`. Both follow this format so they work together without further agreement.
+`model/gen_vectors.py` (#14, #72) writes three vector sets, and the testbenches read them with `$readmemh`. Both sides follow these formats so they work together without further agreement. The generator's flags are up to #72; the Makefile's `vectors` target writes all three sets.
+
+### 9.1 Phase 1 set: `sim/vectors/`
 
 ```sh
 python model/gen_vectors.py --n 4 --random 100 --seed 1 --out sim/vectors
@@ -416,7 +418,55 @@ Directed cases come first, in this order, followed by the random cases:
 | 5 | `known` | 1 to N², row-major | A transposed | worked by hand in the report |
 | 6 and on | `random_<n>` | uniform over −128 to 127 | uniform over −128 to 127 | from the model |
 
-Random values come from `numpy.random.default_rng(seed)`, so a seed always reproduces the same cases.
+Random values come from `numpy.random.default_rng(seed)`, so a seed always reproduces the same cases. This set is unchanged in Phase 2. With `K_MAX` > N, a testbench writes `A[r][k]` of this set at address `r*K_MAX + k` (section 8) and runs every case with `k_len` = N.
+
+### 9.2 K ≠ N set: `sim/vectors/kn/`
+
+Single runs with `k_len` from 1 to `K_MAX`, stored in the hardware layout, so a testbench can copy each case to the A and B ports address for address.
+
+| File | Lines | Each line |
+|---|---|---|
+| `config.hex` | 3 | N, the number of cases, `K_MAX`. 8 hex digits each |
+| `klen.hex` | cases | That case's `k_len`, 8 hex digits |
+| `a.hex` | cases × N × `K_MAX` | Line `case*N*K_MAX + r*K_MAX + k` holds `A[r][k]`, 2 hex digits |
+| `b.hex` | cases × `K_MAX` × N | Line `case*K_MAX*N + k*N + c` holds `B[k][c]`, 2 hex digits |
+| `c.hex` | cases × N × N | Line `case*N*N + r*N + c` holds the expected `C[r][c]`, 8 hex digits |
+| `manifest.txt` | – | N, `K_MAX`, the seed, and the index, name and `k_len` of every case |
+
+Elements of A and B with k ≥ `k_len` are **random filler**, not zero. The hardware must ignore them, so a design that reads past `k_len` fails these checks. The expected C uses only k < `k_len`.
+
+Cases, in order:
+
+1. Directed cases, for each `k_len` in (1, N − 1, N + 1, `K_MAX`), skipping repeats and values outside 1 to `K_MAX`:
+   - `ones_k<k>`: A and B all 1, so every element of C is `k_len`.
+   - `max_negative_k<k>`: A and B all −128, so every element is `k_len` × 16,384.
+   - `random_k<k>`: uniform over −128 to 127.
+2. `random_<n>`: random cases with `k_len` uniform over 1 to `K_MAX`, 100 by default.
+
+### 9.3 Tiled set: `sim/vectors/tiled/`
+
+Whole products C = A·B, with A of size M×K and B of size K×P, for the tiling tests (section 12). The testbench cuts them into tiles and chunks itself.
+
+| File | Lines | Each line |
+|---|---|---|
+| `config.hex` | 3 | N, the number of products, `K_MAX`. 8 hex digits each |
+| `dims.hex` | 3 × products | M, K and P of each product, in that order. 8 hex digits each |
+| `a.hex` | Σ M·K | Each product's A, row-major, the products back to back. 2 hex digits |
+| `b.hex` | Σ K·P | Each product's B, row-major, back to back. 2 hex digits |
+| `c.hex` | Σ M·P | Each product's expected C, row-major, back to back. 8 hex digits |
+| `manifest.txt` | – | N, `K_MAX`, the seed, and the index, name and dimensions of every product |
+
+A product's lines start where the previous product's end, so a testbench finds them by summing the earlier dimensions. Products, in order (sizes for N = 4 and `K_MAX` = 16):
+
+| Name | M × K × P | Shape in general | What it exercises |
+|---|---|---|---|
+| `exact` | 8 × 8 × 8 | 2N × 2N × 2N | Four tiles, one chunk, no padding |
+| `pad_all` | 5 × 7 × 6 | (N + 1) × (2N − 1) × (N + 2) | Zero padding on every edge |
+| `chunks` | 4 × 40 × 4 | N × (5·`K_MAX`/2) × N | Three chunks (16, 16, 8): accumulate runs |
+| `pad_chunks` | 9 × 33 × 7 | (2N + 1) × (2·`K_MAX` + 1) × (2N − 1) | Padding plus a last chunk of length 1 |
+| `single` | 1 × 1 × 1 | 1 × 1 × 1 | The smallest product |
+| `max_negative_long` | 4 × 64 × 4 | N × 4·`K_MAX` × N | A and B all −128: every element is 64 × 16,384 = 1,048,576, so it must not overflow |
+| `random_<n>` | random | M, P uniform over 1 to 3N; K uniform over 1 to 3·`K_MAX` | 20 by default |
 
 ## 10. Verification plan
 
@@ -433,11 +483,13 @@ On any failure the testbench also calls `$fatal(1, ...)`, so the simulator exits
 |---|---|---|---|
 | `tb_mac` | `mac` | Signed products including −128 × −128 and −128 × 127; an accumulation chain; `clear` in the middle of a chain; `en` low holds; reset | #6 |
 | `tb_pe` | `pe` | Forwarding takes exactly one enabled cycle; everything holds while `en` is low; accumulation over K steps; `clear` zeroes all three registers | #6 |
-| `tb_input_skew_buffer` | `input_skew_buffer` | Every lane in every step 0 to T − 1, for both `COLUMN_LANES` values, against table 7.2; zeros while `en` is low; writes to every address | #10 |
+| `tb_input_skew_buffer` | `input_skew_buffer` | Every lane in every step 0 to T − 1, for both `COLUMN_LANES` values, for `k_len` = 1, N, N + 1 and `K_MAX` (table 7.2 for `k_len` = N); lanes stay zero beyond `k_len` while the storage holds nonzero filler; zeros while `en` is low; writes to every address | #10, #68 |
 | `tb_output_buffer` | `output_buffer` | `capture` loads all N² values; values hold without `capture`; every address reads back | #10 |
-| `tb_sa_controller` | `sa_controller` | State sequence; T compute cycles and T + 2 busy cycles; `cycle_count`; `start` ignored while busy; back-to-back runs; reset in the middle of a run; for N = 3 and N = 4 | #7 |
-| `tb_systolic_array` | `systolic_array` | Identity, all-ones, a known product and negative values, with skewed edge inputs driven by the testbench; N = 3 and N = 4 | #3 |
-| `tb_systolic_top` | `systolic_top` | Every directed case and 100 random cases from the vectors; `cycle_count == K + 2N`; writes during a run are ignored; back-to-back runs | #11 |
+| `tb_sa_controller` | `sa_controller` | State sequence; `T = k_len + 2N − 2` compute cycles and `k_len + 2N` busy cycles for `k_len` = 1, N and `K_MAX`; accumulate starts from `IDLE` and from `DONE` skip `CLEAR` and take `k_len + 2N − 1` busy cycles; a `start` with `k_len` = 0 or `K_MAX` + 1 is ignored; `run_k_len` holds while `k_len` changes during a run; `cycle_count`; `start` ignored while busy; back-to-back runs; reset in the middle of a run; for N = 3 and N = 4 | #7, #65 |
+| `tb_systolic_array` | `systolic_array` | Identity, all-ones, a known product and negative values, with skewed edge inputs driven by the testbench; the K ≠ N set (9.2); two chunks run without a clear between them give the full product; N = 3 and N = 4 | #3, #61 |
+| `tb_systolic_top` | `systolic_top` | Every case of the Phase 1 set with `k_len` = N, and of the K ≠ N set; `cycle_count == k_len + 2N`; an accumulate run gives old C + A × B after `k_len + 2N − 1` busy cycles; writes, `k_len` and `accumulate` are ignored during a run; a `start` with `k_len` out of range is ignored; back-to-back runs | #11, #62, #69 |
+| `tb_tiled` (or part of `tb_systolic_top`) | `systolic_top` | Every product of the tiled set (9.3) through the host ports with the reference schedule of section 12, the whole C compared; cycle counts written to `results/phase2/` | #69 |
+| `tb_seq_matmul` | `seq_matmul` | The Phase 1 and K ≠ N sets; a two-chunk product against the full result; `busy` and `cycle_count` equal `N²·k_len`; writes during a run are ignored; a `start` with `k_len` out of range is ignored; back-to-back runs; reset in the middle of a run | #64 |
 
 ## 11. Performance model
 
