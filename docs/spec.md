@@ -246,6 +246,17 @@ Parameters: `N`, `K_MAX`, `DATA_W`, `ACC_W`, `CYC_W`. This is the matrix data in
 
 Wiring: each buffer's `we` is the host's write enable ANDed with `!busy`, so writes during a run are ignored and cannot corrupt the operands in flight. The host's `k_len` and `accumulate` go to the controller. The controller's `en`, `step` and `run_k_len` go to both buffers, `clear` and `en` go to the array, and `capture` goes to the output buffer.
 
+### 6.8 `seq_matmul` — `rtl/baseline/seq_matmul.v` (#64)
+
+The sequential baseline for the speed-up. Its parameters, ports and address map are exactly those of `systolic_top` (6.7 and section 8), so any host, testbench or the demo can drive either design. Inside it has one multiplier and one adder, that is one MAC, and it computes C one element at a time.
+
+- **Order.** Row-major over the elements of C. Each element takes `k_len` cycles, one product per cycle, for k = 0 to `k_len − 1`.
+- **Cycles.** A run is busy for exactly `N²·k_len` cycles (64 for N = `k_len` = 4), normal or accumulate, with no clear or capture cycle. `cycle_count` holds `N²·k_len` in `DONE`.
+- **Arithmetic.** The same as `mac.v` (section 4): the signed product at its natural width, sign-extended to `ACC_W`. Both designs give bit-identical C.
+- **Starting value.** A normal run starts each element from its first product. An accumulate run starts each element from its stored value in C, so it adds onto the previous run's C exactly as the array does.
+- **C.** Each finished element is written to C in the cycle of its last product. C is valid from `done` until the next `start`. During a run it changes element by element, and a read returns a mix of old and new elements. The array keeps the old C readable until `CAPTURE` (7.5); matching that here would need a second N×N result store, which would inflate the baseline's area in the synthesis comparison.
+- **Control.** States `IDLE`, `COMPUTE` and `DONE`: `busy` is high in `COMPUTE` and `done` in `DONE`. `start`, `k_len` and `accumulate` follow the same rules as the array (7.5), including ignoring a `start` whose `k_len` is out of range. Host writes are ignored while `busy` is high, and A and B keep their contents between runs. Reset zeroes A, B, C and `cycle_count`.
+
 ## 7. Timing
 
 ### 7.1 When operands meet
