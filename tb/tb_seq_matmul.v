@@ -149,11 +149,16 @@ module tb_seq_matmul;
         end
     endtask
 
-    // Print the seed line of manifest.txt, so the log records the vector seed.
+    // Read manifest.txt: print the seed line, so the log records the vector seed,
+    // and keep each case's name for baseline_cycles.csv.
+    reg [8*24-1:0] case_name [0:MAX_CASES-1];
     task read_manifest;
-        integer fd, seed_val, r;
+        integer fd, seed_val, r, idx, first;
         reg [8*128-1:0] line;
+        reg [8*24-1:0]  name;
         begin
+            for (idx = 0; idx < MAX_CASES; idx = idx + 1)
+                case_name[idx] = "unnamed";
             fd = $fopen("sim/vectors/manifest.txt", "r");
             if (fd == 0) begin
                 $display("FAIL tb_seq_matmul: cannot open sim/vectors/manifest.txt (run make vectors)");
@@ -163,6 +168,9 @@ module tb_seq_matmul;
                 r = $fgets(line, fd);
                 if (r > 0 && $sscanf(line, "seed = %d", seed_val) == 1)
                     $display("vectors: seed = %0d", seed_val);
+                else if (r > 0 && $sscanf(line, "%d %d %s", idx, first, name) == 3 &&
+                         idx >= 0 && idx < MAX_CASES)
+                    case_name[idx] = name;
             end
             $fclose(fd);
         end
@@ -171,6 +179,7 @@ module tb_seq_matmul;
     // ---- the test sequence -------------------------------------------------
 
     integer vc;
+    integer csv;
 
     initial begin
         $dumpfile("build/tb_seq_matmul.vcd");
@@ -200,12 +209,25 @@ module tb_seq_matmul;
         tick;
 
         // Every case in the vectors: directed cases 0-5, then the random ones.
+        // One row per run goes to baseline_cycles.csv. busy_cycles is measured
+        // from start to done; every busy cycle is a compute cycle, to compare
+        // with the N*N*K formula (spec section 11).
+        csv = $fopen("results/phase2/baseline_cycles.csv", "w");
+        if (csv == 0) begin
+            $display("FAIL tb_seq_matmul: cannot write results/phase2/baseline_cycles.csv");
+            $fatal(1, "cannot write cycle counts");
+        end
+        $fdisplay(csv, "case,name,busy_cycles,cycle_count,expected_busy");
         for (vc = 0; vc < n_cases; vc = vc + 1) begin
             load_case(vc);
             run_once;
             check_c(vc);
+            $fdisplay(csv, "%0d,%0s,%0d,%0d,%0d", vc, case_name[vc], busy_cycles,
+                      cycle_count, BUSY);
         end
-        $display("cases: %0d run, every element of C compared", n_cases);
+        $fclose(csv);
+        $display("cases: %0d run, every element of C compared; cycle counts in results/phase2/baseline_cycles.csv",
+                 n_cases);
 
         if (n_fail == 0) begin
             $display("PASS tb_seq_matmul %0d/%0d", n_checks, n_checks);
