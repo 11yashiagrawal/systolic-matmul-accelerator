@@ -1,0 +1,18 @@
+% Introduction (issue #5; final report #63).
+% Still the Phase 1 text: rewritten in #63 once the Phase 2 results are in.
+
+\section{Introduction}
+Matrix multiplication is the core operation of fully connected and convolutional neural-network layers, of transformers, and of many filters and transforms in signal processing. Multiplying two $N \times N$ matrices takes $N^3$ multiply-accumulate (MAC) operations, and each operand is used $N$ times. A general-purpose processor fetches those operands again and again through its memory hierarchy, and the energy of that data movement exceeds the energy of the arithmetic by orders of magnitude~\cite{horowitz2014energy, sze2017efficient}. Dedicated hardware that keeps operands close to many parallel MAC units is therefore the standard way to accelerate this workload.
+
+A systolic array is a regular grid of identical processing elements (PEs), each connected only to its neighbours, through which data moves in step with a single clock~\cite{kung1979systolic, kung1982systolic}. Each operand is read from memory once and then reused as it passes from PE to PE, so the array performs many operations per memory access. Its short, local wires make it straightforward to scale and to lay out. The same structure is at the heart of production accelerators such as Google's Tensor Processing Unit~\cite{jouppi2017tpu} and of open-source generators such as Gemmini~\cite{genc2021gemmini}.
+
+This project designs, verifies and evaluates a systolic-array matrix-multiplication accelerator in two phases. Phase~1, reported here, delivers a working register-transfer-level (RTL) prototype:
+\begin{itemize}
+\item a parameterized $N \times N$ output-stationary systolic array, $4 \times 4$ by default, for signed 8-bit fixed-point operands with 32-bit accumulators;
+\item input skew buffers, an output buffer and a controller, which together give the array a simple host interface: write $A$ and $B$, pulse \texttt{start}, read $C$;
+\item a written specification that fixes every port, the input skew, and a compute latency of $K + 2N - 2$ cycles before any RTL was written, so the five team members could build and test their modules in parallel;
+\item a verification flow in which every module has a self-checking testbench, a Python golden model provides the expected results, and continuous integration lints and simulates every pull request.
+\end{itemize}
+Phase~2 will synthesize the design, measure its speed-up against a sequential baseline in RTL, and extend it to matrices larger than the array.
+
+Section~II reviews systolic arrays, their dataflows and published accelerators. Section~III describes the architecture, the PE and multiply-accumulate unit, the dataflow and the controller. Section~IV presents the verification methodology and Section~V the status of the prototype. Section~VI concludes with the plan for Phase~2, and Section~VII lists the contributions of each team member.

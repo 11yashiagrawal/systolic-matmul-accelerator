@@ -1,0 +1,6 @@
+% Results and Discussion: section heading and outline (issue #63).
+% The subsections follow in main.tex: results (#71), baseline comparison (#67),
+% synthesis (#78) and the discussion (#63). Each of those files starts with \subsection.
+
+\section{Results and Discussion}
+All results in this section are measured in simulation or reported by the synthesis tools, and every number can be regenerated from the repository: the testbenches write their cycle counts to \texttt{results/phase2/}, and \texttt{make synth} reproduces the resource and frequency table. We first report the latency, throughput and utilization of the accelerator for inner lengths other than $N$ and for tiled products larger than the array. We then compare it with the sequential single-MAC baseline on the same products, present the resources and maximum clock frequency of both designs on the ECP5 FPGA, and close with a discussion of what limits performance and what the results mean for the design.
