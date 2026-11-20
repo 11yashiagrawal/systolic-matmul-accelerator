@@ -76,10 +76,8 @@ module systolic_top (
     wire              array_en;
     wire              capture;
     wire [STEP_W-1:0] step;
-    // Goes to both skew buffers once #68 adds their k_len input (spec section 14).
-    /* verilator lint_off UNUSEDSIGNAL */
+    // k_len of the current run, held by the controller, to both skew buffers.
     wire [K_LEN_W-1:0] run_k_len;
-    /* verilator lint_on UNUSEDSIGNAL */
 
     // Datapath between the blocks.
     wire [N*DATA_W-1:0]  a_left;
@@ -108,8 +106,7 @@ module systolic_top (
         .cycle_count(cycle_count)
     );
 
-    // Phase 1 behaviour until #62: K_MAX = K = N, and k_len is tied to N until the
-    // controller's run_k_len is in (spec section 14).
+    // Phase 1 behaviour until #62: K_MAX = K = N (spec section 14).
     input_skew_buffer #(
         .N           (N),
         .K_MAX       (K),
@@ -123,7 +120,7 @@ module systolic_top (
         .wdata(a_wdata),
         .en   (array_en),
         .step (step),
-        .k_len(K[K_LEN_W-1:0]),
+        .k_len(run_k_len),
         .lanes(a_left)
     );
 
@@ -140,7 +137,7 @@ module systolic_top (
         .wdata(b_wdata),
         .en   (array_en),
         .step (step),
-        .k_len(K[K_LEN_W-1:0]),
+        .k_len(run_k_len),
         .lanes(b_top)
     );
 
