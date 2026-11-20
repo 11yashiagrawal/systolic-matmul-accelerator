@@ -108,8 +108,11 @@ module systolic_top (
         .cycle_count(cycle_count)
     );
 
+    // Phase 1 behaviour until #62: K_MAX = K = N, and k_len is tied to N until the
+    // controller's run_k_len is in (spec section 14).
     input_skew_buffer #(
         .N           (N),
+        .K_MAX       (K),
         .DATA_W      (DATA_W),
         .COLUMN_LANES(0)
     ) u_a_buffer (
@@ -120,11 +123,13 @@ module systolic_top (
         .wdata(a_wdata),
         .en   (array_en),
         .step (step),
+        .k_len(K[K_LEN_W-1:0]),
         .lanes(a_left)
     );
 
     input_skew_buffer #(
         .N           (N),
+        .K_MAX       (K),
         .DATA_W      (DATA_W),
         .COLUMN_LANES(1)
     ) u_b_buffer (
@@ -135,6 +140,7 @@ module systolic_top (
         .wdata(b_wdata),
         .en   (array_en),
         .step (step),
+        .k_len(K[K_LEN_W-1:0]),
         .lanes(b_top)
     );
 
