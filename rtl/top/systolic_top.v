@@ -50,6 +50,7 @@ module systolic_top (
     localparam T      = K + 2*N - 2;      // compute cycles (10 for N = 4)
     localparam ADDR_W = $clog2(N*N);
     localparam STEP_W = $clog2(T);
+    localparam K_LEN_W = $clog2(K + 1);
 
     input  wire                     clk;
     input  wire                     rst_n;
@@ -75,24 +76,34 @@ module systolic_top (
     wire              array_en;
     wire              capture;
     wire [STEP_W-1:0] step;
+    // Goes to both skew buffers once #68 adds their k_len input (spec section 14).
+    /* verilator lint_off UNUSEDSIGNAL */
+    wire [K_LEN_W-1:0] run_k_len;
+    /* verilator lint_on UNUSEDSIGNAL */
 
     // Datapath between the blocks.
     wire [N*DATA_W-1:0]  a_left;
     wire [N*DATA_W-1:0]  b_top;
     wire [N*N*ACC_W-1:0] acc_flat;
 
+    // Phase 1 behaviour until #62: K_MAX = K = N, every run has k_len = N and no
+    // accumulate (spec section 14).
     sa_controller #(
         .N    (N),
+        .K_MAX(K),
         .CYC_W(CYC_W)
     ) u_controller (
         .clk        (clk),
         .rst_n      (rst_n),
         .start      (start),
+        .k_len      (K[K_LEN_W-1:0]),
+        .accumulate (1'b0),
         .busy       (busy),
         .done       (done),
         .clear      (array_clear),
         .en         (array_en),
         .step       (step),
+        .run_k_len  (run_k_len),
         .capture    (capture),
         .cycle_count(cycle_count)
     );
