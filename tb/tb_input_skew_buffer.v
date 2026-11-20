@@ -2,14 +2,19 @@
 `default_nettype none
 `include "sa_params.vh"
 
-// Self-checking testbench for input_skew_buffer (issue #10).
+// Self-checking testbench for input_skew_buffer (issues #10 and #68).
 //
-// Two N = 4 buffers run side by side: COLUMN_LANES = 0 (A) and COLUMN_LANES = 1 (B).
-// Expected lanes are spec table 7.2 transcribed by hand below: for every step t and
-// lane l, the address of the element that must be on the lane, or -1 for zero.
-// Checks: reset (with a write attempted during reset), writes to every address,
-// zeros while en is low, every lane in every step 0..T-1, an overwrite, and reset
-// clearing the storage.
+// Phase 1 part: two N = 4 buffers with K_MAX = N and k_len = N run side by side:
+// COLUMN_LANES = 0 (A) and COLUMN_LANES = 1 (B). Expected lanes are spec table 7.2
+// transcribed by hand below: for every step t and lane l, the address of the
+// element that must be on the lane, or -1 for zero. Checks: reset (with a write
+// attempted during reset), writes to every address, zeros while en is low, every
+// lane in every step 0..T-1, an overwrite, and reset clearing the storage.
+//
+// Phase 2 part (skew_klen_check, below): A and B buffers with K_MAX > N, for
+// N = 4, K_MAX = 16 and N = 3, K_MAX = 5, checked in every step for k_len = 1, N,
+// N + 1 and K_MAX against spec section 6.4: lane l carries element k = t - l when
+// 0 <= k < k_len, and zero otherwise, while every stored element is nonzero.
 module tb_input_skew_buffer;
 
     localparam N      = 4;
@@ -18,6 +23,7 @@ module tb_input_skew_buffer;
     localparam T      = K + 2*N - 2;    // 10
     localparam ADDR_W = 4;              // $clog2(16)
     localparam STEP_W = 4;              // $clog2(10)
+    localparam K_LEN_W = 3;              // $clog2(K + 1)
     localparam MAX_REPORTED = 10;
 
     reg                     clk   = 1'b0;
@@ -32,17 +38,21 @@ module tb_input_skew_buffer;
     integer n_checks = 0;
     integer n_fail   = 0;
 
-    input_skew_buffer #(.N(N), .DATA_W(DATA_W), .COLUMN_LANES(0)) dut_a (
+    input_skew_buffer #(.N(N), .K_MAX(K), .DATA_W(DATA_W), .COLUMN_LANES(0)) dut_a (
         .clk(clk), .rst_n(rst_n), .we(we_a), .waddr(waddr_a), .wdata(wdata_a),
-        .en(en), .step(step), .lanes(lanes_a)
+        .en(en), .step(step), .k_len(K[K_LEN_W-1:0]), .lanes(lanes_a)
     );
 
-    input_skew_buffer #(.N(N), .DATA_W(DATA_W), .COLUMN_LANES(1)) dut_b (
+    input_skew_buffer #(.N(N), .K_MAX(K), .DATA_W(DATA_W), .COLUMN_LANES(1)) dut_b (
         .clk(clk), .rst_n(rst_n), .we(we_b), .waddr(waddr_b), .wdata(wdata_b),
-        .en(en), .step(step), .lanes(lanes_b)
+        .en(en), .step(step), .k_len(K[K_LEN_W-1:0]), .lanes(lanes_b)
     );
 
     always #5 clk = ~clk;
+
+    // Phase 2: K_MAX > N, every k_len from the issue.
+    skew_klen_check #(.N(4), .K_MAX(16), .DATA_W(DATA_W)) u_n4_k16 (.clk(clk));
+    skew_klen_check #(.N(3), .K_MAX(5), .DATA_W(DATA_W)) u_n3_k5 (.clk(clk));
 
     // Matrix contents, row-major. Distinct values, including -128 and 127.
     integer a_val [0:N*N-1];
@@ -199,13 +209,153 @@ module tb_input_skew_buffer;
         rst_n = 1'b1;
         sweep(0, T - 1);
 
+        // Wait for the Phase 2 checks and add their counts.
+        wait (u_n4_k16.finished && u_n3_k5.finished);
+        n_checks = n_checks + u_n4_k16.n_checks + u_n3_k5.n_checks;
+        n_fail   = n_fail   + u_n4_k16.n_fail   + u_n3_k5.n_fail;
+
         if (n_fail == 0) begin
             $display("PASS tb_input_skew_buffer %0d/%0d", n_checks, n_checks);
             $finish;
         end else begin
             $display("FAIL tb_input_skew_buffer %0d of %0d checks failed", n_fail, n_checks);
-            $fatal(1, "input_skew_buffer does not match spec table 7.2");
+            $fatal(1, "input_skew_buffer does not match spec table 7.2 or the k_len rule");
         end
+    end
+
+endmodule
+
+// One A buffer and one B buffer with the given N and K_MAX. Every address is
+// written with a distinct non-zero value, so a lane that reads the wrong element,
+// or an element past k_len, shows up as a mismatch.
+module skew_klen_check (clk);
+
+    parameter N      = 4;
+    parameter K_MAX  = 16;
+    parameter DATA_W = 8;
+
+    localparam DEPTH  = N * K_MAX;
+    localparam T_MAX  = K_MAX + 2*N - 2;
+    localparam OP_ADDR_W = $clog2(DEPTH);
+    localparam STEP_W = $clog2(T_MAX);
+    localparam K_LEN_W = $clog2(K_MAX + 1);
+    localparam MAX_REPORTED = 10;
+
+    input wire clk;
+
+    reg                      rst_n = 1'b0;
+    reg                      en    = 1'b0;
+    reg  [STEP_W-1:0]        step  = 0;
+    reg  [K_LEN_W-1:0]        k_len = 0;
+    reg                      we    = 1'b0;
+    reg  [OP_ADDR_W-1:0]     waddr = 0;
+    reg  signed [DATA_W-1:0] wdata_a = 0, wdata_b = 0;
+    wire [N*DATA_W-1:0]      lanes_a, lanes_b;
+
+    integer n_checks = 0;
+    integer n_fail   = 0;
+    reg     finished = 1'b0;
+
+    input_skew_buffer #(.N(N), .K_MAX(K_MAX), .DATA_W(DATA_W), .COLUMN_LANES(0)) dut_a (
+        .clk(clk), .rst_n(rst_n), .we(we), .waddr(waddr), .wdata(wdata_a),
+        .en(en), .step(step), .k_len(k_len), .lanes(lanes_a)
+    );
+
+    input_skew_buffer #(.N(N), .K_MAX(K_MAX), .DATA_W(DATA_W), .COLUMN_LANES(1)) dut_b (
+        .clk(clk), .rst_n(rst_n), .we(we), .waddr(waddr), .wdata(wdata_b),
+        .en(en), .step(step), .k_len(k_len), .lanes(lanes_b)
+    );
+
+    // Distinct non-zero values in [-127, 127]; A and B use different sequences.
+    integer a_val [0:DEPTH-1];
+    integer b_val [0:DEPTH-1];
+
+    function integer val(input integer addr, input integer mul, input integer add);
+        begin
+            val = ((addr * mul + add) % 255) - 127;
+            if (val == 0)
+                val = 127;
+        end
+    endfunction
+
+    task check_lane(input integer which, input integer kl, input integer t,
+                    input integer l, input integer expected);
+        integer got;
+        begin
+            if (which == 0) got = $signed(lanes_a[l*DATA_W +: DATA_W]);
+            else            got = $signed(lanes_b[l*DATA_W +: DATA_W]);
+            n_checks = n_checks + 1;
+            if (got !== expected) begin
+                if (n_fail < MAX_REPORTED)
+                    $display("  FAIL N=%0d K_MAX=%0d %s k_len %0d step %0d lane %0d: got %0d, expected %0d",
+                             N, K_MAX, (which == 0) ? "A" : "B", kl, t, l, got, expected);
+                n_fail = n_fail + 1;
+            end
+        end
+    endtask
+
+    // Every step the step input can hold. use_rule = 0 expects all zeros.
+    // A: lane l carries A[l][k], at l*K_MAX + k.  B: lane l carries B[k][l], at k*N + l.
+    task sweep(input integer kl, input integer use_rule);
+        integer t, l, k, ea, eb;
+        begin
+            for (t = 0; t < (1 << STEP_W); t = t + 1) begin
+                step = t;
+                #1;
+                for (l = 0; l < N; l = l + 1) begin
+                    k  = t - l;
+                    ea = 0;
+                    eb = 0;
+                    if (use_rule && k >= 0 && k < kl) begin
+                        ea = a_val[l*K_MAX + k];
+                        eb = b_val[k*N + l];
+                    end
+                    check_lane(0, kl, t, l, ea);
+                    check_lane(1, kl, t, l, eb);
+                end
+            end
+        end
+    endtask
+
+    integer idx;
+
+    initial begin
+        for (idx = 0; idx < DEPTH; idx = idx + 1) begin
+            a_val[idx] = val(idx, 37, 11);
+            b_val[idx] = val(idx, 53, 7);
+        end
+
+        repeat (2) @(posedge clk);
+        @(negedge clk);
+        rst_n = 1'b1;
+
+        // Write every address of both buffers.
+        for (idx = 0; idx < DEPTH; idx = idx + 1) begin
+            @(negedge clk);
+            we = 1'b1; waddr = idx; wdata_a = a_val[idx]; wdata_b = b_val[idx];
+        end
+        // Addresses past the storage (when DEPTH is not a power of two) are ignored.
+        for (idx = DEPTH; idx < (1 << OP_ADDR_W); idx = idx + 1) begin
+            @(negedge clk);
+            we = 1'b1; waddr = idx; wdata_a = 8'sd99; wdata_b = 8'sd99;
+        end
+        @(negedge clk);
+        we = 1'b0;
+
+        // en low: zero for every k_len.
+        k_len = K_MAX;
+        sweep(K_MAX, 0);
+
+        en = 1'b1;
+        k_len = 1;      sweep(1, 1);
+        k_len = N;      sweep(N, 1);
+        k_len = N + 1;  sweep(N + 1, 1);
+        k_len = K_MAX;  sweep(K_MAX, 1);
+
+        // k_len = 0 feeds nothing.
+        k_len = 0;      sweep(0, 0);
+
+        finished = 1'b1;
     end
 
 endmodule
