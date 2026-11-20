@@ -17,8 +17,11 @@ module tb_systolic_top;
     localparam ACC_W     = `SA_ACC_W;
     localparam CYC_W     = `SA_CYC_W;
     localparam K         = N;
+    localparam K_MAX     = `SA_K_MAX;
     localparam NN        = N * N;
     localparam ADDR_W    = $clog2(NN);
+    localparam OP_ADDR_W = $clog2(N * K_MAX);   // A and B ports (spec section 8)
+    localparam K_LEN_W   = $clog2(K_MAX + 1);
     localparam BUSY      = K + 2*N;         // busy cycles per run, spec 7.4 (12 for N = 4)
     localparam MAX_CASES = 1024;
     localparam MAX_REPORTED = 10;
@@ -26,12 +29,16 @@ module tb_systolic_top;
     reg                     clk     = 1'b0;
     reg                     rst_n   = 1'b0;
     reg                     a_we    = 1'b0;
-    reg  [ADDR_W-1:0]       a_addr  = 0;
+    reg  [OP_ADDR_W-1:0]    a_addr  = 0;
     reg  signed [DATA_W-1:0] a_wdata = 0;
     reg                     b_we    = 1'b0;
-    reg  [ADDR_W-1:0]       b_addr  = 0;
+    reg  [OP_ADDR_W-1:0]    b_addr  = 0;
     reg  signed [DATA_W-1:0] b_wdata = 0;
     reg                     start   = 1'b0;
+    // Every case in the Phase 1 set has K = N, so every run uses k_len = N and no
+    // accumulate (spec section 9.1).
+    reg  [K_LEN_W-1:0]      k_len   = K;
+    reg                     accumulate = 1'b0;
     reg  [ADDR_W-1:0]       c_addr  = 0;
     wire                    busy;
     wire                    done;
@@ -39,12 +46,13 @@ module tb_systolic_top;
     wire [CYC_W-1:0]        cycle_count;
 
     systolic_top #(
-        .N(N), .DATA_W(DATA_W), .ACC_W(ACC_W), .CYC_W(CYC_W)
+        .N(N), .K_MAX(K_MAX), .DATA_W(DATA_W), .ACC_W(ACC_W), .CYC_W(CYC_W)
     ) dut (
         .clk(clk), .rst_n(rst_n),
         .a_we(a_we), .a_addr(a_addr), .a_wdata(a_wdata),
         .b_we(b_we), .b_addr(b_addr), .b_wdata(b_wdata),
-        .start(start), .busy(busy), .done(done),
+        .start(start), .k_len(k_len), .accumulate(accumulate),
+        .busy(busy), .done(done),
         .c_addr(c_addr), .c_rdata(c_rdata), .cycle_count(cycle_count)
     );
 
@@ -99,12 +107,18 @@ module tb_systolic_top;
         end
     endtask
 
+    // Address of element e = r*N + k of an N x N matrix A on the A port, where
+    // rows are K_MAX apart (spec section 8). B rows are N apart, so B's address is e.
+    function integer a_port(input integer e);
+        a_port = (e / N) * K_MAX + (e % N);
+    endfunction
+
     // Write case c's A and B through the two write ports, one element per cycle each.
     task load_case(input integer c);
         integer addr;
         begin
             for (addr = 0; addr < NN; addr = addr + 1) begin
-                a_we = 1'b1; a_addr = addr; a_wdata = a_mem[c*NN + addr];
+                a_we = 1'b1; a_addr = a_port(addr); a_wdata = a_mem[c*NN + addr];
                 b_we = 1'b1; b_addr = addr; b_wdata = b_mem[c*NN + addr];
                 tick;
             end
@@ -149,7 +163,7 @@ module tb_systolic_top;
                               c_rdata, exp_c[guard % NN]);
                     end
                     if (write_during_run) begin
-                        a_we = 1'b1; a_addr = guard % NN;       a_wdata = 127 - guard;
+                        a_we = 1'b1; a_addr = a_port(guard % NN); a_wdata = 127 - guard;
                         b_we = 1'b1; b_addr = (guard + 5) % NN; b_wdata = guard - 100;
                     end
                 end
