@@ -1,26 +1,28 @@
 % Individual contributions (issue #5; final report #63, covering both phases). Each member checks their own row.
+% The Phase 2 entries list each member's Phase 2 issues (#60 to #80). At assembly,
+% check each entry against what merged.
 
 \section{Individual Contributions}
-Every module, testbench, model script and report section has one owner, assigned through a GitHub issue. Each member committed their own work from their own GitHub account through pull requests into a shared integration branch, where continuous integration lints the RTL and runs every testbench. Table~\ref{tab:contrib} lists who did what.
+Every module, testbench, model script and report section has one owner, assigned through a GitHub issue. In both phases each member committed their own work from their own GitHub account through pull requests into a shared integration branch, where continuous integration lints the RTL and runs every testbench. Table~\ref{tab:contrib} lists who did what in each phase.
 
-\begin{table}[ht]
+\begin{table*}[t]
 \centering
 \caption{Individual contributions}
 \label{tab:contrib}
 \footnotesize
-\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.27\columnwidth}>{\raggedright\arraybackslash}p{0.66\columnwidth}@{}}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.12\textwidth}>{\raggedright\arraybackslash}p{0.41\textwidth}>{\raggedright\arraybackslash}p{0.41\textwidth}@{}}
 \toprule
-Member & Contribution \\
+Member & Phase 1: prototype & Phase 2: final design and evaluation \\
 \midrule
-Gokul VKS (lead) & Architecture specification and interface contract; systolic array grid and its testbench; top-level integration; repository, issues and pull-request reviews; the lines each member reads in the video, and the video edit; abstract, introduction, architecture overview and report assembly \\
+Gokul VKS (lead) & Architecture specification and interface contract; systolic array grid and its testbench; top-level integration; repository, issues and pull-request reviews; the lines each member reads in the video, and the video edit; abstract, introduction, architecture overview and report assembly & Specification v2 (inner length, accumulate runs, tiling, the baseline and the synthesis targets); top-level interface for $k_{\mathrm{len}}$ and accumulate; array checks for $K \neq N$ and for products split into chunks; issues, reviews and merges; abstract, introduction, architecture overview, tiling, discussion, conclusion and report assembly \\
 \addlinespace
-Milind Bansal & Multiply-accumulate unit and processing element; controller state machine; their testbenches; waveform layouts and captures; report sections on the PE and the controller \\
+Milind Bansal & Multiply-accumulate unit and processing element; controller state machine; their testbenches; waveform layouts and captures; report sections on the PE and the controller & Controller with run-time inner length and accumulate runs; sequential single-MAC baseline and its testbench; Phase~2 waveform captures; report sections on the PE, the controller and the comparison with the baseline \\
 \addlinespace
-Isha Tomar & Input skew buffers and output buffer with their testbenches; end-to-end accelerator testbench with golden vectors and cycle counts; video script, segment timing and storyboard; report sections on the dataflow and the prototype status \\
+Isha Tomar & Input skew buffers and output buffer with their testbenches; end-to-end accelerator testbench with golden vectors and cycle counts; video script, segment timing and storyboard; report sections on the dataflow and the prototype status & Skew buffers with $K_{\max}$ storage and the $k_{\mathrm{len}}$ bound; end-to-end tests of $K \neq N$ and tiled products, with cycle counts; the live demonstration; report sections on the dataflow and the results \\
 \addlinespace
-Yashi Agrawal & Python golden model and test-vector generator; literature review and its references \\
+Yashi Agrawal & Python golden model and test-vector generator; literature review and its references & Golden model and test vectors for $K \neq N$ and tiling; performance model and plots; literature review on tiling and FPGA systolic arrays, and the references \\
 \addlinespace
-Mohammad Affan Anas & Toolchain setup guide, Makefile and continuous-integration workflow; architecture diagrams; README; verification methodology section; clean-clone release check \\
+Mohammad Affan Anas & Toolchain setup guide, Makefile and continuous-integration workflow; architecture diagrams; README; verification methodology section; clean-clone release check & Synthesis flow with Yosys and nextpnr, and the resource and frequency results; Phase~2 architecture diagrams; README; report sections on synthesis and verification; clean-clone release check \\
 \bottomrule
 \end{tabular}
-\end{table}
+\end{table*}
