@@ -107,3 +107,50 @@ product's tiles, chunks and first line in `a.hex`, `b.hex` and `c.hex`.
 Each set has its own random generator, seeded from `--seed` and the set, so
 the Phase 1 files are byte-identical to Phase 1 and adding cases to one set
 never changes another.
+
+## Performance model: `perf_model.py` (#73)
+
+Predicts every cycle count of [`docs/spec.md` section 11](../docs/spec.md#11-performance-model),
+checks the predictions against the cycle counts the testbenches write, and
+draws the report figures. Run it from the repository root:
+
+```sh
+python model/perf_model.py               # check measurements, write figures and sweep
+python model/perf_model.py --check-only  # only check measurements
+```
+
+It has two models, like the golden model:
+
+- **Closed form**, from spec 11.1 and 11.2. One array run is busy for
+  `k_len + 2N` cycles, or `k_len + 2N − 1` for an accumulate run. One
+  baseline run is busy for `N²·k_len` cycles. For a whole product, each tile
+  is busy for `K + chunks·(2N − 1) + 1` cycles, and takes
+  `(N + 1)·K + 2N·chunks + 1 + N²` host cycles once loading and readout are
+  included.
+- **Schedule** (`schedule_cycles`). Walks the runs of `plan_tiles` one by one
+  under the reference host schedule of spec section 12, and adds up loads,
+  starts, busy cycles and readouts.
+
+The self-tests check that the two models agree for every shape they try, and
+that the closed form gives the spec's worked examples (45, 260 and 241 host
+cycles).
+
+**Measured files.** For each file in `MEASURED`, every row is compared with
+the model, and the script exits with 1 if any value differs. A file that has
+not been measured yet is reported as `SKIP`. These columns are understood:
+
+| Columns | Checked against |
+|---|---|
+| `busy_cycles`, `cycle_count`, optional `k_len` (default N), `accumulate` (default 0), `n` | One run: `k_len + 2N` or `k_len + 2N − 1` (array), `N²·k_len` (baseline) |
+| `compute_cycles` | `k_len + 2N − 2` (array) |
+| `m`, `k`, `p` with `busy_cycles` and optional `host_cycles` | A whole tiled product (spec 11.2) |
+| `design` (`array` or `baseline`) | Overrides the file's design for that row |
+
+**Outputs** in `results/phase2/figures/`, each as PDF for the report and PNG:
+
+| File | Shows |
+|---|---|
+| `cycles_vs_size` | Busy and host cycles of S×S×S products, array against baseline, with the measured runs marked |
+| `speedup_vs_n` | Busy-cycle speed-up of one N×N tile for N = 2 to 8 and K = 4, 8, 16, against the N² peak |
+| `utilization_vs_k` | PE utilization during compute for K = 1 to 32 and N = 2, 4, 8; it drops where a second chunk starts |
+| `perf_sweep.csv` | Every metric for N = 2 to 8 and K = 1 to 32 |
