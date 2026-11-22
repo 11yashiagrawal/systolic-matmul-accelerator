@@ -1,18 +1,20 @@
 % Introduction (issue #5; final report #63).
-% Still the Phase 1 text: rewritten in #63 once the Phase 2 results are in.
+% At assembly, check that every Phase 2 item listed below landed (#64, #69, #70, #73, #75).
 
 \section{Introduction}
 Matrix multiplication is the core operation of fully connected and convolutional neural-network layers, of transformers, and of many filters and transforms in signal processing. Multiplying two $N \times N$ matrices takes $N^3$ multiply-accumulate (MAC) operations, and each operand is used $N$ times. A general-purpose processor fetches those operands again and again through its memory hierarchy, and the energy of that data movement exceeds the energy of the arithmetic by orders of magnitude~\cite{horowitz2014energy, sze2017efficient}. Dedicated hardware that keeps operands close to many parallel MAC units is therefore the standard way to accelerate this workload.
 
 A systolic array is a regular grid of identical processing elements (PEs), each connected only to its neighbours, through which data moves in step with a single clock~\cite{kung1979systolic, kung1982systolic}. Each operand is read from memory once and then reused as it passes from PE to PE, so the array performs many operations per memory access. Its short, local wires make it straightforward to scale and to lay out. The same structure is at the heart of production accelerators such as Google's Tensor Processing Unit~\cite{jouppi2017tpu} and of open-source generators such as Gemmini~\cite{genc2021gemmini}.
 
-This project designs, verifies and evaluates a systolic-array matrix-multiplication accelerator in two phases. Phase~1, reported here, delivers a working register-transfer-level (RTL) prototype:
-\begin{itemize}
-\item a parameterized $N \times N$ output-stationary systolic array, $4 \times 4$ by default, for signed 8-bit fixed-point operands with 32-bit accumulators;
-\item input skew buffers, an output buffer and a controller, which together give the array a simple host interface: write $A$ and $B$, pulse \texttt{start}, read $C$;
-\item a written specification that fixes every port, the input skew, and a compute latency of $K + 2N - 2$ cycles before any RTL was written, so the five team members could build and test their modules in parallel;
-\item a verification flow in which every module has a self-checking testbench, a Python golden model provides the expected results, and continuous integration lints and simulates every pull request.
-\end{itemize}
-Phase~2 will synthesize the design, measure its speed-up against a sequential baseline in RTL, and extend it to matrices larger than the array.
+This project designs, verifies and evaluates a systolic-array matrix-multiplication accelerator in two phases. Phase~1 delivered a working register-transfer-level (RTL) prototype: a parameterized $N \times N$ output-stationary array for signed 8-bit fixed-point operands with 32-bit accumulators, with input skew buffers, an output buffer, a controller and a simple host interface. It was built to a written specification that fixed every port and cycle count before any RTL was written, and every module was checked by a self-checking testbench against a Python golden model. That prototype could multiply only one pair of $N \times N$ matrices, and its speed-up over sequential hardware was derived, not measured.
 
-Section~II reviews systolic arrays, their dataflows and published accelerators. Section~III describes the architecture, the PE and multiply-accumulate unit, the dataflow and the controller. Section~IV presents the verification methodology and Section~V the status of the prototype. Section~VI concludes with the plan for Phase~2, and Section~VII lists the contributions of each team member.
+This report presents the final design and its evaluation. Phase~2 adds:
+\begin{itemize}
+\item a run-time inner length $k_{\mathrm{len}}$, from 1 to $K_{\max}$, and an \emph{accumulate} start that adds a run's products onto the previous result, so that the unchanged array multiplies matrices of any size, one $N \times N$ output tile and one chunk of the inner dimension at a time;
+\item a sequential baseline in RTL, with one multiply-accumulate unit and exactly the same host interface, so that the same testbenches measure the speed-up on the same products;
+\item synthesis of both designs for a Lattice ECP5 FPGA with the open-source Yosys and nextpnr tools~\cite{wolf2013yosys, shah2019yosysnextpnr}, which gives their resource use and maximum clock frequency;
+\item a cycle-level performance model, tests of inner lengths other than $N$ and of tiled products larger than the array, and a live demonstration, \texttt{make demo}, that runs any product on both designs and checks the result against NumPy.
+\end{itemize}
+As in Phase~1, the specification was revised first, before any RTL changed, so the members could extend their modules in parallel against fixed ports and cycle counts.
+
+Section~II reviews systolic arrays, their dataflows, tiling and published FPGA implementations. Section~III describes the architecture, the PE and multiply-accumulate unit, the dataflow, the controller and the tiling procedure. Section~IV presents the verification methodology. Section~V reports the latency, throughput and tiled performance, compares the array with the baseline, presents the synthesis results and discusses them. Section~VI lists the contributions of each team member, and Section~VII concludes.
