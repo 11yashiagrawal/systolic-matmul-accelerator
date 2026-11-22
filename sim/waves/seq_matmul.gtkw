@@ -34,7 +34,7 @@ tb_seq_matmul.done
 +{state} tb_seq_matmul.dut.state[1:0]
 +{row} tb_seq_matmul.dut.row[1:0]
 +{col} tb_seq_matmul.dut.col[1:0]
-+{k} tb_seq_matmul.dut.k[1:0]
++{k} tb_seq_matmul.dut.k[3:0]
 @424
 +{a_op} tb_seq_matmul.dut.a_op[7:0]
 +{b_op} tb_seq_matmul.dut.b_op[7:0]
