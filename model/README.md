@@ -1,13 +1,14 @@
-# Golden model and test vectors (#14)
+# Golden model and test vectors (#14, #72)
 
-Python reference for `C = A × B` and the generator of the vectors that
-`tb/tb_systolic_top.v` (#11) reads. The file format is the one in
-[`docs/spec.md` section 9](../docs/spec.md#9-golden-test-vectors).
+Python reference for `C = A × B` and the generator of the vectors the
+testbenches read. The file formats are the ones in
+[`docs/spec.md` section 9](../docs/spec.md#9-golden-test-vectors): the Phase 1
+set, the K ≠ N set and the tiled set.
 
 | File | What it does |
 |---|---|
-| `golden_model.py` | `matmul`: the reference product, with range checks on operands (`DATA_W`) and results (`ACC_W`). `simulate_output_stationary`: a cycle-level model of the N×N array with the spec's skew and forwarding registers. `edge_inputs`: the lane values of table 7.2. `to_hex` / `from_hex`: two's complement hex. |
-| `gen_vectors.py` | Writes `config.hex`, `a.hex`, `b.hex`, `c.hex` and `manifest.txt`. |
+| `golden_model.py` | `matmul`: the reference product, with range checks on operands (`DATA_W`) and results (`ACC_W`). `simulate_output_stationary`: a cycle-level model of the N×N array with the spec's skew and forwarding registers, for any `k_len`, and for accumulate runs through `acc_init`. `compute_cycles` / `busy_cycles`: the run lengths of spec 7.4 and 7.6. `plan_tiles`, `tiled_matmul`, `simulate_tiled`: the tiling procedure of spec section 12. `edge_inputs`: the lane values of table 7.2. `to_hex` / `from_hex`: two's complement hex. |
+| `gen_vectors.py` | Writes the three vector sets: the Phase 1 set in `--out`, the K ≠ N set in `--out/kn/` and the tiled set in `--out/tiled/`. |
 | `test_golden_model.py` | Self-tests against hand-worked values and the spec's numbers. |
 | `requirements.txt` | NumPy. |
 
@@ -15,13 +16,25 @@ Python reference for `C = A × B` and the generator of the vectors that
 
 ```sh
 python -m pip install -r model/requirements.txt
-make vectors                                   # N=4, 100 random cases, seed 1 -> build/vectors
+make vectors                                   # all three sets, N=4, K_MAX=16, seed 1 -> build/vectors
 python model/gen_vectors.py --n 4 --random 100 --seed 1 --out sim/vectors   # same thing by hand
+python model/gen_vectors.py --sets kn --kn-random 10 --out /tmp/v           # one set, fewer cases
 python -m unittest discover -s model -v       # model self-tests
 ```
 
 `make vectors` writes to `build/vectors` and links `sim/vectors` to it, so
-testbenches can always `$readmemh("sim/vectors/a.hex", ...)`.
+testbenches can always `$readmemh("sim/vectors/a.hex", ...)`,
+`"sim/vectors/kn/a.hex"` or `"sim/vectors/tiled/a.hex"`.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--n` | 4 | Array size N |
+| `--k-max` | 16 | `K_MAX`, the largest `k_len` of one run (`SA_K_MAX`); at least N |
+| `--random` | 100 | Random cases in the Phase 1 set |
+| `--kn-random` | 100 | Random cases in the K ≠ N set |
+| `--tiled-random` | 20 | Random products in the tiled set |
+| `--seed` | 1 | Seed of all three sets |
+| `--sets` | `phase1 kn tiled` | Which sets to write |
 
 ## Cases
 
@@ -53,3 +66,44 @@ any RTL runs. When a PE result is wrong in simulation, pass a list as
 All random values come from one `numpy.random.default_rng(seed)`, including
 the random A of `identity` and `zero`. The same seed always gives the same
 files, and the seed is printed in `manifest.txt`.
+
+## K ≠ N set: `sim/vectors/kn/` (#72)
+
+Single runs with `k_len` from 1 to `K_MAX`, in the hardware's layout: A is
+N×`K_MAX` and B is `K_MAX`×N, so a testbench copies each case to the A and B
+ports address for address (spec section 8). Elements with k ≥ `k_len` are
+random filler, not zero: a design that reads past `k_len` fails. The expected
+C uses only k < `k_len`, and the cycle-level model must reach it in
+`k_len + 2N − 2` steps.
+
+Directed cases come first, three for each `k_len` in (1, N − 1, N + 1,
+`K_MAX`) = (1, 3, 5, 16): `ones_k<k>` (every element of C is `k_len`),
+`max_negative_k<k>` (`k_len` × 16,384) and `random_k<k>`. Then `random_<n>`
+with `k_len` uniform over 1 to `K_MAX`. `manifest.txt` lists each case's
+`k_len`, its compute and busy cycles, and its first line in each file.
+
+## Tiled set: `sim/vectors/tiled/` (#72)
+
+Whole products C = A·B with A of size M×K and B of size K×P, back to back in
+each file; `dims.hex` gives M, K and P of each. For N = 4 and `K_MAX` = 16:
+
+| Index | Name | M × K × P | What it exercises |
+|---|---|---|---|
+| 0 | `exact` | 8 × 8 × 8 | Four tiles, one chunk, no padding |
+| 1 | `pad_all` | 5 × 7 × 6 | Zero padding on every edge |
+| 2 | `chunks` | 4 × 40 × 4 | Three chunks (16, 16, 8): accumulate runs |
+| 3 | `pad_chunks` | 9 × 33 × 7 | Padding plus a last chunk of length 1 |
+| 4 | `single` | 1 × 1 × 1 | The smallest product |
+| 5 | `max_negative_long` | 4 × 64 × 4 | All −128: every element is 1,048,576 |
+| 6 and on | `random_<n>` | M, P from 1 to 12, K from 1 to 48 | 20 by default |
+
+The expected C is `matmul` on the whole matrices. Before writing, the
+generator also runs every product through `tiled_matmul` (the section 12
+procedure: tiles in row-major order, every chunk of a tile before the next
+tile, zero padding) and replays each run on the cycle-level model with
+accumulate runs carrying the sums across chunks. `manifest.txt` gives each
+product's tiles, chunks and first line in `a.hex`, `b.hex` and `c.hex`.
+
+Each set has its own random generator, seeded from `--seed` and the set, so
+the Phase 1 files are byte-identical to Phase 1 and adding cases to one set
+never changes another.
