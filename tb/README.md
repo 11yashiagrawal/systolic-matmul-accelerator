@@ -8,3 +8,5 @@ One self-checking testbench per RTL module, named `tb_<module>.v`. The rules are
 - dump waveforms into `build/` (ignored); commit only `.gtkw` layouts in `sim/waves/`.
 
 Shared check macros go in `common/tb_utils.vh`.
+
+`demo.v` is not a testbench: it is the host that `make demo` (`model/demo.py`) compiles for each design. Its name keeps it out of `make test`, which runs only `tb_*.v`.
