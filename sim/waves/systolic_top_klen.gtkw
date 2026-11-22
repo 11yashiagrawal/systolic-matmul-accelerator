@@ -1,0 +1,48 @@
+[*]
+[*] K != N waveform layout (issue #66): one run with k_len = 5 on the 4x4 array
+[*] (K != N case 6, ones_k5: A and B all 1 for k < 5, random filler after).
+[*] Busy for k_len + 2N = 13 cycles, k_len + 2N - 2 = 11 of them compute steps.
+[*] From the repository root:
+[*]   make sim-systolic_top
+[*]   gtkwave -r sim/waves/report.gtkwaverc sim/waves/systolic_top_klen.gtkw
+[*] state: 0 IDLE, 1 CLEAR, 2 COMPUTE, 3 CAPTURE, 4 DONE.
+[*] Markers: A start taken (run_k_len = 5), B step 0, C step 10 = T - 1, D done.
+[*]
+[dumpfile] "build/tb_systolic_top.vcd"
+[timestart] 53976000
+[size] 1250 760
+[pos] -1 -1
+*-15.300000 53995000 53995000 54005000 54105000 54125000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[markername] AA start
+[markername] BB step 0
+[markername] CC step 10
+[markername] DD done
+[treeopen] tb_systolic_top.
+[treeopen] tb_systolic_top.dut.
+[sst_width] 200
+[signals_width] 230
+[sst_expanded] 0
+[sst_vpaned_height] 200
+@28
+tb_systolic_top.clk
+tb_systolic_top.start
+@24
++{k_len} tb_systolic_top.k_len[4:0]
+@28
+tb_systolic_top.busy
+tb_systolic_top.done
+@200
+-Controller
+@24
++{run_k_len} tb_systolic_top.dut.run_k_len[4:0]
++{state} tb_systolic_top.dut.u_controller.state[2:0]
++{step} tb_systolic_top.dut.u_controller.step[4:0]
+@28
++{capture} tb_systolic_top.dut.capture
+@24
++{cycle_count} tb_systolic_top.cycle_count[31:0]
+@200
+-Accumulators
+@424
++{PE(0,0) acc} tb_systolic_top.dut.u_array.g_row[0].g_col[0].u_pe.acc[31:0]
++{PE(3,3) acc} tb_systolic_top.dut.u_array.g_row[3].g_col[3].u_pe.acc[31:0]
