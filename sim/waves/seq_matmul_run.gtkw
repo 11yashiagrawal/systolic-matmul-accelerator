@@ -1,0 +1,34 @@
+[*]
+[*] Baseline waveform layout (issue #66): one whole run of the known product
+[*] (golden case 5): busy for N*N*K = 64 cycles, one MAC per cycle.
+[*] From the repository root:
+[*]   make sim-seq_matmul
+[*]   gtkwave -r sim/waves/report.gtkwaverc sim/waves/seq_matmul_run.gtkw
+[*] state: 0 IDLE, 1 COMPUTE, 2 DONE. The per-cycle operands are in seq_matmul.gtkw.
+[*] Markers: A start taken, B done with cycle_count = 64.
+[*]
+[dumpfile] "build/tb_seq_matmul.vcd"
+[timestart] 5186000
+[size] 1250 760
+[pos] -1 -1
+*-17.4 5205000 5205000 5845000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[markername] AA start
+[markername] BB done
+[treeopen] tb_seq_matmul.
+[treeopen] tb_seq_matmul.dut.
+[sst_width] 200
+[signals_width] 230
+[sst_expanded] 0
+[sst_vpaned_height] 200
+@28
+tb_seq_matmul.clk
+tb_seq_matmul.start
+tb_seq_matmul.busy
+tb_seq_matmul.done
+@200
+-Baseline MAC
+@24
++{state} tb_seq_matmul.dut.state[1:0]
++{row} tb_seq_matmul.dut.row[1:0]
++{col} tb_seq_matmul.dut.col[1:0]
++{cycle_count} tb_seq_matmul.cycle_count[31:0]

@@ -1,0 +1,49 @@
+[*]
+[*] Accumulate waveform layout (issue #66): the last two chunks of the tiled
+[*] product chunks (4x40x4, tiled product 2), run as chunks of 16, 16 and 8.
+[*] Both runs shown start with accumulate high, so they go from DONE straight to
+[*] COMPUTE with no CLEAR, and PE (0,0) keeps adding onto its partial sum.
+[*] From the repository root:
+[*]   make sim-systolic_top
+[*]   gtkwave -r sim/waves/report.gtkwaverc sim/waves/systolic_top_accumulate.gtkw
+[*] state: 0 IDLE, 1 CLEAR, 2 COMPUTE, 3 CAPTURE, 4 DONE.
+[*] Markers: A second chunk starts (k_len 16), B its done (cycle_count 23),
+[*] C third chunk starts (k_len 8), D its done (cycle_count 15, C[0][0] final).
+[*]
+[dumpfile] "build/tb_systolic_top.vcd"
+[timestart] 163466000
+[size] 1250 760
+[pos] -1 -1
+*-17.600000 163545000 163545000 163775000 164105000 164255000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[markername] AA chunk 2
+[markername] BB done
+[markername] CC chunk 3
+[markername] DD done
+[treeopen] tb_systolic_top.
+[treeopen] tb_systolic_top.dut.
+[sst_width] 200
+[signals_width] 230
+[sst_expanded] 0
+[sst_vpaned_height] 200
+@28
+tb_systolic_top.clk
+tb_systolic_top.a_we
+tb_systolic_top.start
+tb_systolic_top.accumulate
+@24
++{k_len} tb_systolic_top.k_len[4:0]
+@28
+tb_systolic_top.busy
+tb_systolic_top.done
+@200
+-Controller
+@24
++{state} tb_systolic_top.dut.u_controller.state[2:0]
+@28
++{clear} tb_systolic_top.dut.u_array.clear
+@24
++{cycle_count} tb_systolic_top.cycle_count[31:0]
+@200
+-Accumulator
+@424
++{PE(0,0) acc} tb_systolic_top.dut.u_array.g_row[0].g_col[0].u_pe.acc[31:0]

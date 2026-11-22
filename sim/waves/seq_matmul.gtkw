@@ -1,0 +1,44 @@
+[*]
+[*] Baseline waveform layout (issue #66): the first two elements of C in one run
+[*] of the known product (golden case 5, A = 1..16, B = A transposed).
+[*] From the repository root:
+[*]   make sim-seq_matmul
+[*]   gtkwave -r sim/waves/report.gtkwaverc sim/waves/seq_matmul.gtkw
+[*] state: 0 IDLE, 1 COMPUTE, 2 DONE.
+[*] Markers: A start taken, B C[0][0] = 30 written, C sum restarts for C[0][1],
+[*] D C[0][1] = 70 written.
+[*]
+[dumpfile] "build/tb_seq_matmul.vcd"
+[timestart] 5186000
+[size] 1250 760
+[pos] -1 -1
+*-14.63 5205000 5205000 5245000 5255000 5285000 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1 -1
+[markername] AA start
+[markername] BB C00
+[markername] CC restart
+[markername] DD C01
+[treeopen] tb_seq_matmul.
+[treeopen] tb_seq_matmul.dut.
+[sst_width] 200
+[signals_width] 230
+[sst_expanded] 0
+[sst_vpaned_height] 200
+@28
+tb_seq_matmul.clk
+tb_seq_matmul.start
+tb_seq_matmul.busy
+tb_seq_matmul.done
+@200
+-Baseline MAC
+@24
++{state} tb_seq_matmul.dut.state[1:0]
++{row} tb_seq_matmul.dut.row[1:0]
++{col} tb_seq_matmul.dut.col[1:0]
++{k} tb_seq_matmul.dut.k[3:0]
+@424
++{a_op} tb_seq_matmul.dut.a_op[7:0]
++{b_op} tb_seq_matmul.dut.b_op[7:0]
++{prod} tb_seq_matmul.dut.prod_ext[31:0]
++{sum} tb_seq_matmul.dut.sum[31:0]
+@24
++{cycle_count} tb_seq_matmul.cycle_count[31:0]
