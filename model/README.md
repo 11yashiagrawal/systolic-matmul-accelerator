@@ -10,6 +10,7 @@ set, the K ≠ N set and the tiled set.
 | `golden_model.py` | `matmul`: the reference product, with range checks on operands (`DATA_W`) and results (`ACC_W`). `simulate_output_stationary`: a cycle-level model of the N×N array with the spec's skew and forwarding registers, for any `k_len`, and for accumulate runs through `acc_init`. `compute_cycles` / `busy_cycles`: the run lengths of spec 7.4 and 7.6. `plan_tiles`, `tiled_matmul`, `simulate_tiled`: the tiling procedure of spec section 12. `edge_inputs`: the lane values of table 7.2. `to_hex` / `from_hex`: two's complement hex. |
 | `gen_vectors.py` | Writes the three vector sets: the Phase 1 set in `--out`, the K ≠ N set in `--out/kn/` and the tiled set in `--out/tiled/`. |
 | `test_golden_model.py` | Self-tests against hand-worked values and the spec's numbers. |
+| `demo.py` | The live demonstration behind `make demo`: one product of any size on `systolic_top` and `seq_matmul`, checked against NumPy, with both designs' cycle counts and the speed-up. |
 | `requirements.txt` | NumPy. |
 
 ## Use
@@ -20,6 +21,9 @@ make vectors                                   # all three sets, N=4, K_MAX=16, 
 python model/gen_vectors.py --n 4 --random 100 --seed 1 --out sim/vectors   # same thing by hand
 python model/gen_vectors.py --sets kn --kn-random 10 --out /tmp/v           # one set, fewer cases
 python -m unittest discover -s model -v       # model self-tests
+make demo                                      # random 8x20x8 product on both designs
+make demo M=9 K=33 P=7 SEED=4                  # another size and seed
+make demo A=my_a.txt B=my_b.txt WAVES=1        # your own matrices, then open the last tile
 ```
 
 `make vectors` writes to `build/vectors` and links `sim/vectors` to it, so
@@ -154,3 +158,7 @@ not been measured yet is reported as `SKIP`. These columns are understood:
 | `speedup_vs_n` | Busy-cycle speed-up of one N×N tile for N = 2 to 8 and K = 4, 8, 16, against the N² peak |
 | `utilization_vs_k` | PE utilization during compute for K = 1 to 32 and N = 2, 4, 8; it drops where a second chunk starts |
 | `perf_sweep.csv` | Every metric for N = 2 to 8 and K = 1 to 32 |
+
+## Demo
+
+`make demo` runs `model/demo.py`, which writes the product to `build/demo/`, compiles `tb/demo.v` once for `systolic_top` and once for `seq_matmul`, and runs both through the host procedure of spec section 12. It prints A, B and C, the NumPy check, the busy and total cycles of both designs and the speed-up, and ends with `PASS demo` or `FAIL demo`. A matrix file has one row per line, integers from −128 to 127 separated by spaces or commas; lines starting with `#` are ignored. Products up to 64×64×64 run in a few seconds.
