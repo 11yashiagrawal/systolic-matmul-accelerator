@@ -1,0 +1,78 @@
+% Literature review for the final report (issue #74).
+% Extends the Phase 1 review (issue #15). Add every cited paper to refs.bib in the same PR.
+
+\section{Literature Review}
+
+\subsection{Systolic Arrays}
+Kung and Leiserson introduced systolic arrays as grids of simple, identical cells that pass data only to their nearest neighbours, with every cell working in step with one clock~\cite{kung1979systolic}. Kung later argued that the main benefit is reuse: an operand fetched from memory once is used by many cells as it moves through the array, so the array can do much more computation per memory access~\cite{kung1982systolic}. Matrix multiplication fits this model well, because each element of $A$ and $B$ is used $N$ times in an $N \times N$ product. Short, local wires and a regular layout also make the design easy to scale and to lay out in silicon.
+
+The reuse argument matters more today than in 1982. At 45\,nm, an off-chip DRAM access costs more than three orders of magnitude more energy than an 8-bit integer multiply~\cite{horowitz2014energy}. An accelerator saves energy by keeping data on chip and close to the arithmetic, and a systolic array does this by design.
+
+\subsection{Dataflows}
+Chen \emph{et al.} classify accelerator dataflows by which value stays in place inside each processing element (PE)~\cite{chen2016eyeriss, sze2017efficient}. In a \emph{weight-stationary} (WS) dataflow, each PE holds one weight while inputs flow past and partial sums move out. In an \emph{output-stationary} (OS) dataflow, each PE holds one output and accumulates it in place while both operands flow through. \emph{Row-stationary} (RS) and \emph{no-local-reuse} dataflows trade between these. SCALE-Sim, a cycle-level simulator for systolic accelerators, adds \emph{input-stationary} (IS) and shows that the best dataflow and array shape depend on the layer dimensions~\cite{samajdar2020scalesim}. No dataflow is best for every workload.
+
+OS suits a small matrix-multiplication array for two reasons. First, partial sums never leave the PE, so the array needs no adder chain between PEs and no partial-sum buffer. Second, the full result $C$ is already in place when computation ends, so it can be read out directly. The cost is pipeline fill and drain. An $N \times N$ OS array computing an inner dimension of $K$ needs $K + 2N - 2$ cycles, of which only $K$ keep any single PE busy. Utilization is therefore $K/(K + 2N - 2)$: 40\,\% for $N = K = 4$, rising towards 100\,\% as $K$ grows.
+
+\subsection{Accelerators Built on These Dataflows}
+Table~\ref{tab:litcompare} compares several published designs with this work. Google's first Tensor Processing Unit (TPU) uses a $256 \times 256$ WS systolic array of 8-bit multiply-accumulate units, with 32-bit accumulators, for datacenter neural-network inference~\cite{jouppi2017tpu}. ShiDianNao uses an OS $8 \times 8$ PE array placed next to an image sensor, and keeps each output neuron in its PE while inputs shift between neighbours~\cite{du2015shidiannao}. Eyeriss introduced the RS dataflow on a 168-PE chip and reduces data movement for convolutions~\cite{chen2016eyeriss, chen2017eyerissjssc}. Gemmini is an open-source generator of systolic-array accelerators whose array can run either OS or WS, chosen at run time, so the two can be compared on the same hardware~\cite{genc2021gemmini}.
+
+\begin{table}[t]
+\centering
+\caption{Systolic and spatial accelerators compared with this work}
+\label{tab:litcompare}
+\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Design & Dataflow & PEs & Operands \\
+\midrule
+TPU~\cite{jouppi2017tpu} & WS & $256 \times 256$ & 8-bit int \\
+ShiDianNao~\cite{du2015shidiannao} & OS & $8 \times 8$ & 16-bit fixed \\
+Eyeriss~\cite{chen2017eyerissjssc} & RS & $12 \times 14$ & 16-bit fixed \\
+Gemmini~\cite{genc2021gemmini} & OS or WS & configurable & configurable \\
+This work & OS & $4 \times 4$ (any $N$) & 8-bit int \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Tiling Large Products onto a Fixed Array}
+A real workload is almost never the same size as the array, so every design above splits a large product into pieces that fit. The TPU holds one $256 \times 256$ tile of weights in its matrix unit, plus a second tile for double buffering, which hides the 256 cycles it takes to shift a new tile in~\cite{jouppi2017tpu}. Its authors also show the cost of a tile that does not divide the matrix evenly: a $600 \times 600$ matrix needs nine steps on a $256 \times 256$ unit, and a $512 \times 512$ unit would need only four, but each of those takes four times as long, so the larger unit is slower on this matrix~\cite{jouppi2017tpu}. The edge tiles are mostly padding, and padding costs the same time as useful work.
+
+Gemmini moves the tiling decision into software. At run time, its library chooses loop tile sizes from the layer dimensions and the parameters of the generated array, and these sizes decide when and how much data moves between DRAM, the L2 cache and the scratchpad~\cite{genc2021gemmini}. A programmer can also set the tile sizes by hand.
+
+SCALE-Sim gives an analytical model for the same idea, which it calls \emph{folding}~\cite{samajdar2020scalesim}. A workload whose spatial dimensions $S_R \times S_C$ exceed an $R \times C$ array is cut into $\lceil S_R/R \rceil \lceil S_C/C \rceil$ folds that run one after another. Each fold takes $2R + C + T - 2$ cycles, where $T$ is the temporal dimension, and the total runtime is that per-fold time multiplied by the number of folds. The per-fold time contains a fixed fill-and-drain overhead, so many small folds waste more time than a few large ones.
+
+Our design follows the host-driven approach of Gemmini at a much smaller scale. In Phase~2 the host splits $C = A \cdot B$, with $A$ of size $M \times K$ and $B$ of size $K \times P$, into $N \times N$ output tiles, splits the inner dimension into chunks of at most $K_{\max}$, and zero-pads the edges. An \emph{accumulate} start adds each chunk onto the values already held in the PEs, which the OS dataflow allows because the outputs never leave the array between chunks. Each run takes $k_{\mathrm{len}} + 2N - 2$ compute cycles, the same form as SCALE-Sim's per-fold time. SCALE-Sim's extra $R$ term counts draining the outputs out through the array edge, which our design does in a separate readout phase.
+
+\subsection{Systolic Arrays on FPGAs}
+FPGAs are a common target for systolic arrays, because a grid of identical PEs with only local connections maps well onto their DSP blocks and registers. Table~\ref{tab:fpgacompare} lists three published implementations and the resources and clock frequency they report.
+
+Wei \emph{et al.} generate a two-dimensional systolic array for convolutional neural networks from C code, with an analytical model of performance and resources that guides an automatic design space exploration~\cite{wei2017automated}. Their FP32 design on an Intel Arria~10 GX1150 has an $8 \times 19$ PE array with an 8-wide vector unit in each PE, uses 81\,\% of the DSPs and runs at about 253\,MHz~\cite{wang2021autosa}. It reaches about 600\,GFLOP/s: 600\,GFLOP/s at 252.6\,MHz on the third convolution layer of VGG-16 in PolySA's comparison~\cite{cong2018polysa}, and 603\,GFLOP/s at 253\,MHz in AutoSA's~\cite{wang2021autosa}. PolySA uses the polyhedral model to derive systolic arrays from loop nests automatically~\cite{cong2018polysa}. Its FP32 matrix-multiplication design on a Xilinx Virtex UltraScale+ VU9P runs at 228.8\,MHz with 89\,\% of the DSPs and reaches 555\,GFLOP/s. AutoSA extends PolySA with more optimizations and supports several data types~\cite{wang2021autosa}. On a Xilinx Alveo U250 its matrix-multiplication designs reach 0.93\,TFLOP/s in FP32 and 6.95\,TOP/s in 8-bit integers, both at 300\,MHz. The 8-bit design uses only 52\,\% of the DSPs, because it builds some of its multipliers from logic instead.
+
+These results show two trends that apply to our design. First, the 1D and 2D arrays that AutoSA compares trade size against frequency: its best 1D array clocks at 346\,MHz against 300\,MHz for the 2D array, because the 1D array is more regular and uses fewer resources~\cite{wang2021autosa}. Second, 8-bit integer arithmetic needs far fewer DSP resources per multiply-accumulate than FP32, which is why AutoSA reaches more than seven times the FP32 throughput at the same clock.
+
+\begin{table}[t]
+\centering
+\caption{Published FPGA systolic arrays. CNN is the third convolution layer of VGG-16 and MM is matrix multiplication. DSP is the percentage of the device's DSP blocks used.}
+\label{tab:fpgacompare}
+\footnotesize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{@{}llllrrr@{}}
+\toprule
+Design & Workload & Device & Type & MHz & DSP & Throughput \\
+\midrule
+Wei~\cite{wei2017automated} & CNN & Arria 10 & FP32 & 253 & 81\,\% & 0.60 TFLOP/s \\
+PolySA~\cite{cong2018polysa} & MM & VU9P & FP32 & 229 & 89\,\% & 0.56 TFLOP/s \\
+AutoSA~\cite{wang2021autosa} & MM & U250 & FP32 & 300 & 68\,\% & 0.93 TFLOP/s \\
+AutoSA~\cite{wang2021autosa} & MM & U250 & int8 & 300 & 52\,\% & 6.95 TOP/s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+All three are generated automatically from high-level code, built with vendor high-level synthesis tools, and use most of the DSPs on a large FPGA. Our design is hand-written Verilog and targets a small Lattice ECP5 device (LFE5U-25F) with a fully open-source flow: Yosys for synthesis~\cite{wolf2013yosys} and nextpnr for placement and routing~\cite{shah2019yosysnextpnr}. Yosys and nextpnr together take Verilog to a bitstream for ECP5 devices without vendor tools~\cite{shah2019yosysnextpnr}, so anyone can reproduce our resource and frequency numbers.
+
+\subsection{Fixed-Point Arithmetic}
+Integer arithmetic is much cheaper than floating point in both energy and area~\cite{horowitz2014energy}. Jacob \emph{et al.} show that neural networks can run inference with 8-bit integer weights and activations and 32-bit integer accumulators, with little loss of accuracy~\cite{jacob2018quantization}. The TPU uses the same 8-bit operand and 32-bit accumulator widths~\cite{jouppi2017tpu}. This work follows that choice. The largest product of two signed 8-bit values is $(-128)(-128) = 2^{14}$, so an inner dimension of $K$ can produce sums up to $K \cdot 2^{14}$. A signed 32-bit accumulator holds this for any $K \le 131\,071$. Accumulating many chunks of a tiled product into the same PE therefore cannot overflow for any matrix size we test.
+
+\subsection{Position of This Work}
+The designs above are built for throughput on large workloads and are produced by compilers or generators. This work is a small, fully parameterized OS array whose timing contract (input skew, a compute latency of $k_{\mathrm{len}} + 2N - 2$ cycles and a start/busy/done handshake) is stated precisely and checked against a Python golden model that also simulates the array cycle by cycle. Phase~2 adds the two features that the literature shows a fixed array needs: a run-time inner length and an accumulate start, which together let the host tile any $M \times K$ by $K \times P$ product. We measure the result against a sequential single-MAC baseline with the same interface, and report resources and maximum frequency from the open-source ECP5 flow.
